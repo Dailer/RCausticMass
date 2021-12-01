@@ -7,7 +7,17 @@ Install the required libraries
 ```
 install.packages(c("magicaxis","gplots","imager","pracma"))
 ```
-
+Source the R file
+```
+source("RCausticMass.R")
+```
+Run the code
+```
+data = read.table("sample_data.txt")
+data = subset(data, CID == 1)
+run_caustic(data$dproj, data$vlos, data$zclus)
+```
+----------
 Author: Dailer F. Morell
 
 This code is public and may be used for research purposes.
