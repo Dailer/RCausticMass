@@ -14,7 +14,7 @@ Source the R file functions
 ```
 source("RCausticMass.R")
 ```
-Run the code, here using the sample data provided
+Run the code, here using the sample data provided with unknown values of R200 and cluster velocity dispersion
 ```
 data = read.table("sample_data.txt")
 data = subset(data, CID == 1)
@@ -22,7 +22,7 @@ r = run_caustic(data$dproj, data$vlos, data$zclus, r200 = NA, clus_vdisp = NA)
 ```
 The smoothed phase-space of galaxies can be plotted
 ```
-image(r$x_range, r$y_range, r$img_tot, asp = NA, xlab = expression(R[proj] ~ (Mpc)), 
+image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[proj] ~ (Mpc)), 
       ylab = expression(v[proj] ~ (km/s)))
 ```
 ----------
