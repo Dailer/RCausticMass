@@ -11,7 +11,7 @@ Source the R file
 ```
 source("RCausticMass.R")
 ```
-Run the code
+Run the code with the sample data
 ```
 data = read.table("sample_data.txt")
 data = subset(data, CID == 1)
@@ -20,4 +20,5 @@ run_caustic(data$dproj, data$vlos, data$zclus)
 ----------
 Author: Dailer F. Morell
 
+**Copyright 2021 the author**
 This code is public and may be used for research purposes.
