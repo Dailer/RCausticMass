@@ -18,7 +18,11 @@ Run the code, here using the sample data provided
 ```
 data = read.table("sample_data.txt")
 data = subset(data, CID == 1)
-run_caustic(data$dproj, data$vlos, data$zclus, r200 = NA, clus_vdisp = NA)
+r = run_caustic(data$dproj, data$vlos, data$zclus, r200 = NA, clus_vdisp = NA)
+```
+The smoothed phase-space of galaxies can be plotted
+```
+image(r$x_range, r$y_range, r$img_tot, asp = NA, xlab = expression(R[proj] ~ (Mpc)), ylab = expression(v[proj] ~ (km~s^{-1})))
 ```
 ----------
 Author: Dailer F. Morell
