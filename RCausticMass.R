@@ -268,7 +268,7 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
     abline(v = r200_est, col = 'gray', lty = 2, lwd = 2)
     legend('topright', lty = c(1, 2, 2, NA, NA), pch = c(NA, NA, NA, 20, 1), 
            col = c('red', 'orange', 'gray', 'black', 'black'), lwd = 2, bty = 'n', 
-           y.intersp = .8, x.intersp = .5, cex = .8, seg.len = 1.8,
+           y.intersp = .9, x.intersp = .5, cex = .8, seg.len = 1.8,
            legend=c('Escape surface', 'NFW fit', 'R200', 'Members', 'Outliers'))
   }
   
