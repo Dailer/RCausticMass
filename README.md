@@ -23,7 +23,7 @@ r = run_caustic(data$dproj, data$vlos, data$zclus, r200 = NA, clus_vdisp = NA)
 The smoothed phase-space of galaxies can be plotted
 ```
 image(r$x_range, r$y_range, r$img_tot, asp = NA, xlab = expression(R[proj] ~ (Mpc)), 
-      ylab = expression(v[proj] ~ (km~s^{-1})))
+      ylab = expression(v[proj] ~ (km/s)))
 ```
 ----------
 Author: Dailer F. Morell
