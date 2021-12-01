@@ -1,4 +1,9 @@
+# Caustic Mass Estimator for Galaxy Clusters 
 This is an R implementation of the Caustic Mass Estimator for Galaxy Clusters developed in Python by Gifford et al. (see https://github.com/giffordw/CausticMass)
+
+Code Usage
+----------
+
 
 Author: Dailer F. Morell
 
