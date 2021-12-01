@@ -13,7 +13,7 @@ Source the R file functions
 ```
 source("RCausticMass.R")
 ```
-Run the code with the sample data
+Run the code, here using the sample data
 ```
 data = read.table("sample_data.txt")
 data = subset(data, CID == 1)
