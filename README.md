@@ -3,7 +3,10 @@ This is an R implementation of the Caustic Mass Estimator for Galaxy Clusters de
 
 Code Usage
 ----------
-
+Install the required libraries
+```
+install.packages(c("magicaxis","gplots","imager","pracma"))
+```
 
 Author: Dailer F. Morell
 
