@@ -1,6 +1,8 @@
 # Caustic Mass Estimator for Galaxy Clusters 
 This is an R implementation of the Caustic Mass Estimator for Galaxy Clusters developed in Python by [Gifford et al.](https://github.com/giffordw/CausticMass)
 
+The caustic technique is a powerful method to infer cluster mass profiles to clustrocentric distances well beyond the virial radius, by measuring the escape velocity of te sistem using only galaxy redshift information.
+
 Code Usage
 ----------
 Install the required libraries
