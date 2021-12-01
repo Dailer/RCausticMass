@@ -266,16 +266,16 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
     lines(x_range, caustic_fit, lty = 2, lwd = 2, col = 'orange') 
     lines(x_range, -caustic_fit, lty = 2, lwd = 2, col = 'orange')
     abline(v = r200_est, col = 'gray', lty = 2, lwd = 2)
-	legend('topright', lty = c(1, 2, 2, NA, NA), pch = c(NA, NA, NA, 20, 1), 
-		   col = c('red', 'orange', 'gray', 'black', 'black'), lwd = 2, bty = 'n', 
-		   y.intersp = .8, x.intersp = .5, cex = .8, seg.len = 1.8,
-		   legend=c('Escape surface', 'NFW fit', 'R200', 'Members', 'Outliers'))
+    legend('topright', lty = c(1, 2, 2, NA, NA), pch = c(NA, NA, NA, 20, 1), 
+           col = c('red', 'orange', 'gray', 'black', 'black'), lwd = 2, bty = 'n', 
+           y.intersp = .8, x.intersp = .5, cex = .8, seg.len = 1.8,
+           legend=c('Escape surface', 'NFW fit', 'R200', 'Members', 'Outliers'))
   }
   
   # output list
   lout=list(data_set = data_set, x_range = x_range, y_range = y_range, img_tot = Zi, 
             caustic_profile = Ar_finalD, caustic_outliers = caustic_outliers, 
-			nfw_fit = caustic_fit, nfw_fit_err = reserr, r200_est = r200_est, 
-			vdisp_est = vdisp_gal, log_M200_est = log10(M200_est))
+            nfw_fit = caustic_fit, nfw_fit_err = reserr, r200_est = r200_est, 
+            vdisp_est = vdisp_gal, log_M200_est = log10(M200_est))
   return(invisible(lout))
 }
