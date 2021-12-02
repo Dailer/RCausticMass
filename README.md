@@ -28,6 +28,4 @@ image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[pr
 ----------
 Author: Dailer F. Morell
 
-**Copyright 2021 the author**
-
 This code is public and may be used for research purposes.
