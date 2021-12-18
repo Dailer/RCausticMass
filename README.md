@@ -8,7 +8,7 @@ Code Usage
 ----------
 Install the required libraries
 ```
-install.packages(c("magicaxis","gplots","imager","pracma"))
+install.packages(c("magicaxis", "gplots", "imager", "pracma"))
 ```
 Source the R file functions
 ```
