@@ -10,7 +10,7 @@ Install the required libraries
 ```
 install.packages(c("magicaxis", "gplots", "imager", "pracma"))
 ```
-Source the R file functions
+Download and source the R file functions
 ```
 source("RCausticMass.R")
 ```
