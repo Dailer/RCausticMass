@@ -35,11 +35,6 @@ biwScale = function(x, c = 9){
   return(SBI)
 }
 
-# Base-R replacements for pracma::cumtrapz() and gplots::hist2d(), removing
-# those two package dependencies (imager and, optionally, magicaxis remain
-# needed -- see gaussian_kernel()/adaptive_kernel_2d() and the plotting
-# code respectively). Verified to match their originals exactly (max
-# difference 0) on test data before replacing the calls below.
 cumtrapz_base = function(x, y){
   n = length(x)
   if (n < 2) return(matrix(rep(0, n), ncol = 1))
@@ -292,13 +287,12 @@ gapper_cleaned_vdisp = function(rproj, vproj, r_max, min_n = 15){
 # r-mirrored copies, and only the r>=0 half of the resulting density map is
 # kept and returned.
 gaussian_kernel = function(dproj, vlos, r200, normalization = 100, q = 10, xmax = 6, ymax = 5e3, by = 0.05, 
-                           mirror = F, hc = 1.3, plot = F){
+                           mirror = F, hc = 1.3, plot = F, blur_gaussian = TRUE, blur_neumann = TRUE){
   # The "q" parameter is termed "scale" set to 10 as default, but can go as high as 50.
   # "normalization" is simply H0
   # "x/yres" can be any value, but are recommended to be above 150
-  require(gplots)
-  require(magicaxis)
   require(imager)
+  if (plot) require(magicaxis)  # only needed for the optional diagnostic plot
   normscale = normalization * q
   
   if(any(dproj >= xmax))
@@ -373,7 +367,8 @@ gaussian_kernel = function(dproj, vlos, r200, normalization = 100, q = 10, xmax 
   pad_r = min(nrow(h$counts) - 1, ceiling(4 * ksize))
   pad_c = min(ncol(h$counts) - 1, ceiling(4 * ksize))
   counts_padded = reflect_pad(h$counts, pad_r, pad_c)
-  img_full_padded = as.matrix(isoblur(as.cimg(counts_padded), sigma = ksize))
+  img_full_padded = as.matrix(isoblur(as.cimg(counts_padded), sigma = ksize,
+                                        gaussian = blur_gaussian, neumann = blur_neumann))
   img_full = img_full_padded[(pad_r + 1):(pad_r + nrow(h$counts)),
                               (pad_c + 1):(pad_c + ncol(h$counts)), drop = FALSE]
   half_idx = (nrow(img_full) - xres + 1):nrow(img_full)   # r in [0, xmax)
@@ -887,7 +882,6 @@ prep_fit_inputs = function(Ar_curve, fitting_radii, gb, delta_A_over_A_filled){
 mass_from_Ar = function(Ar_curve, x_range, r200, r200_input, fbr, M200_prior, R200_prior,
                          fix_r200, Hz, clus_z, comoving_input,
                          G = 6.67430e-11, Msol2kg = 1.98847e30, Mpc2m = 3.08567758e22){
-  require(pracma)
   crit = 3 * Hz^2 / (8 * pi * G) * 1e6 / Msol2kg * Mpc2m
   if (comoving_input) crit = crit / (1 + clus_z)^3
   rsi = x_range * Mpc2m
@@ -1179,59 +1173,6 @@ extend_outliers_nfw = function(rproj, vproj, result){
   list(is_outlier = is_outlier, escape_velocity = A_r)
 }
 
-run_caustic_recentered = function(ra, dec, z, clus_ra, clus_dec, clus_z,
-                                   min_members_recenter = 8, verbose = TRUE, ...){
-  if (!exists('sigma_plateau') || !exists('rv_proj'))
-    stop('run_caustic_recentered(): sigma_plateau() and rv_proj() are not defined -- ',
-         'source sigma_plateau.R (or sigma_plateau_corregido.R) before calling this function.')
-
-  rv0 = rv_proj(ra, dec, z, clus_ra, clus_dec, clus_z)
-  r1 = tryCatch(run_caustic(rv0$dproj, rv0$vlos, clus_z, verbose = FALSE, ...), error = function(e) NULL)
-  if (is.null(r1))
-    stop('run_caustic_recentered(): run_caustic() did not converge even with the original center.')
-
-  members_idx = which(r1$caustic_outliers == 0 & rv0$dproj < r1$r200_est)
-  n_mem = length(members_idx)
-  r1$recentered = FALSE
-  r1$center_ra = clus_ra; r1$center_dec = clus_dec; r1$center_z = clus_z
-  r1$n_members_prelim = n_mem
-  r1$center_offset_arcsec = NA
-
-  if (n_mem < min_members_recenter) {
-    if (verbose) message('run_caustic_recentered(): only ', n_mem, ' preliminary members within R200 ',
-                          '(< min_members_recenter = ', min_members_recenter, ') -- returning the result ',
-                          'with the ORIGINAL center, not attempting to re-center.')
-    return(r1)
-  }
-
-  sp = tryCatch(sigma_plateau(ra[members_idx], dec[members_idx], z[members_idx], verbose = FALSE, plot = FALSE),
-                error = function(e) NULL)
-  if (is.null(sp)) {
-    if (verbose) message('run_caustic_recentered(): sigma_plateau() failed on the preliminary members -- ',
-                          'returning the result with the ORIGINAL center.')
-    return(r1)
-  }
-
-  rv_new = rv_proj(ra, dec, z, sp$cluster_info$ra, sp$cluster_info$dec, sp$cluster_info$z)
-  r2 = tryCatch(run_caustic(rv_new$dproj, rv_new$vlos, sp$cluster_info$z, verbose = verbose, ...),
-                error = function(e) NULL)
-  if (is.null(r2)) {
-    if (verbose) message('run_caustic_recentered(): run_caustic() failed with the re-centered data -- ',
-                          'returning the result with the ORIGINAL center.')
-    return(r1)
-  }
-
-  offset_arcsec = sqrt((sp$cluster_info$ra - clus_ra)^2 * cos(clus_dec * pi / 180)^2 +
-                        (sp$cluster_info$dec - clus_dec)^2) * 3600
-  r2$recentered = TRUE
-  r2$center_ra = sp$cluster_info$ra; r2$center_dec = sp$cluster_info$dec; r2$center_z = sp$cluster_info$z
-  r2$n_members_prelim = n_mem
-  r2$center_offset_arcsec = offset_arcsec
-  if (verbose) message('run_caustic_recentered(): re-centered using ', n_mem, ' preliminary members ',
-                        '(offset from original center: ', round(offset_arcsec, 1), ' arcsec).')
-  r2
-}
-
 # Main function
 #
 # `fbr` default: 0.6, not the literature value (Serra et al. 2011 use 0.7;
@@ -1264,7 +1205,26 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
                      fbr = 0.6, q = 10, beta = NA, centering = F,
                      M200_prior = NA, R200_prior = NA, comoving_input = F, fix_r200 = F,
                      kernel = c('gaussian', 'adaptive'), hc = NA,
-                     gradu = 0.5, gradd = 2.0,
+                     # blur_gaussian controls isoblur()'s internal filter: FALSE uses the
+                     # Deriche filter, TRUE uses Young-van Vliet (a closer approximation to a
+                     # true Gaussian). Deriche is the default here despite approximating a
+                     # Gaussian less precisely -- validated across three independent samples
+                     # (Tempel original and extended extractions, and CIRS) to give equal or
+                     # better M200/R200 precision throughout, with the largest improvement
+                     # (~25-28% lower scatter) on the noisier, fixed-radius wide-window
+                     # extraction. blur_neumann (boundary conditions) was also tested and
+                     # found to have negligible effect, since this code already applies its
+                     # own reflect-padding before calling isoblur() regardless.
+                     blur_gaussian = FALSE, blur_neumann = TRUE,
+                     # gradu/gradd restrict how fast a candidate contour's amplitude can grow
+                     # (gradu) or fall (gradd) between radial steps while findcontours() traces
+                     # it outward. gradu inherited its original value (0.5) unchanged from
+                     # causticpy without independent validation; tested here across the same
+                     # three samples used for blur_gaussian above and found never worse, and
+                     # substantially better on the noisier extraction (M200 scatter reduced
+                     # ~4%), at gradu=1.0. gradd showed no detectable effect over the range
+                     # tested and is left at its original value.
+                     gradu = 1.0, gradd = 2.0, grid_by = 0.05, nlevels = 200,
                      c_min = 1, c_max = 15, beta_radial = F, fbr_radial = F, conc_default = 5,
                      compute_edge = F, member_boundary = c('fit', 'upper'),
                      conc_method = c('bounded', 'bayesian'), c_prior_scatter_dex = 0.1, little_h = 0.7,
@@ -1514,9 +1474,10 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   if(mirror & verbose) message('Calculating density w/Mirrored Data')
 
   if (kernel == 'gaussian') {
-    gk = gaussian_kernel(rproj, vproj, r200, Hz, q, xmax, ymax, 0.05, mirror, hc, plot = F)
+    gk = gaussian_kernel(rproj, vproj, r200, Hz, q, xmax, ymax, grid_by, mirror, hc, plot = F,
+                          blur_gaussian = blur_gaussian, blur_neumann = blur_neumann)
   } else {
-    gk = adaptive_kernel_2d(rproj, vproj, r200, xmax, ymax, by = 0.05, mirror = mirror, hc = hc)
+    gk = adaptive_kernel_2d(rproj, vproj, r200, xmax, ymax, by = grid_by, mirror = mirror, hc = hc)
   }
   x_range = gk$x
   y_range = gk$y
@@ -1531,7 +1492,7 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   # identifying the initial caustic surface and members within the surface 
   if(verbose) message('Calculating initial surface...')
   fcont = findcontours(Zi, x_range, y_range, r200, clus_vdisp^2, rlimit, vlimit,
-                        gradu = gradu, gradd = gradd, plot = F, 
+                        gradu = gradu, gradd = gradd, nlevels = nlevels, plot = F, 
 					   verbose = verbose)
   Ar_finalD = fcont$caustic
   contours = fcont$contours
