@@ -7,7 +7,7 @@ The caustic technique is a powerful method to infer cluster mass profiles to clu
 ## Installation
 
 ```r
-install.packages(c("magicaxis", "gplots", "imager", "pracma"))
+install.packages(c("imager", "magicaxis"))
 source("RCausticMass.R")
 ```
 
