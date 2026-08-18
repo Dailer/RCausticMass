@@ -50,8 +50,8 @@ Tested against the Tempel et al. (2017) group catalogue (0.02 < z < 0.1), compar
 
 | | Extraction | N clusters | F_β(r) |
 |---|---|---|---|
-| **Original** | 3×R200, velocity window constrained by Tempel's own confirmed members | 713 | 0.72 |
-| **Extended** | Fixed 10 Mpc radius, ±4000 km/s velocity window | 1485 | 0.50 |
+| **Constrained** | 3×R200, velocity window constrained by Tempel's own confirmed members | 713 | 0.72 |
+| **Unconstrained** | Fixed 10 Mpc radius, ±4000 km/s velocity window | 1485 | 0.50 |
 
 <p align="center">
   <img src="docs/images/M200_blind_original.png" width="47%">
