@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "RCausticMass: Caustic Mass Estimator for Galaxy Clusters"
+type: software
+authors:
+  - family-names: "Fonticiella Morell"
+    given-names: "Dailer"
+    name-particle: ""
+repository-code: "https://github.com/Dailer/RCausticMass"
+abstract: >
+  An R implementation of the caustic technique for estimating galaxy
+  cluster mass profiles to clustrocentric distances well beyond the
+  virial radius, using only galaxy redshift information. Based on the
+  method of Diaferio & Geller (1997) and Diaferio (1999), and on the
+  Python implementation of Gifford, Miller & Kern (2013).
+keywords:
+  - astronomy
+  - galaxy clusters
+  - caustic technique
+  - mass estimation
+license: MIT
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Diaferio"
+      given-names: "Antonaldo"
+  title: "Mass estimation in the outer regions of galaxy clusters"
+  year: 1999
+  journal: "Monthly Notices of the Royal Astronomical Society"
