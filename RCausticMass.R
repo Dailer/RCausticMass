@@ -1,6 +1,15 @@
-# Biweight scale estimator (Beers et al. 1990, eq. 9). Robust alternative
-# to the standard deviation, downweighting outliers via a tuning constant
-# c=9 applied to the raw median absolute deviation.
+# Biweight scale estimator from Beers et al. (1990)
+#
+# Fixed to match Beers et al. (1990) exactly (and the already-validated
+# implementation in sigma_plateau.R): the tuning constant c=9 multiplies
+# the RAW median absolute deviation (mad(..., constant=1)), not a
+# rescaled MAD (the previous constant=2.21914 effectively made the tuning
+# constant ~20 instead of 9, far less aggressive at downweighting
+# outliers than the published recipe). The sqrt(n) prefactor also now uses
+# the FULL sample size, as in eq. 9 of Beers et al. (1990) -- the previous
+# version used sqrt(length(wu)), the count of points surviving the |u|<1
+# clip, which systematically underestimates the scale whenever points are
+# clipped.
 biwScale = function(x, c = 9){
   # BUG FIX: an empty `x` (e.g. no galaxies survive a radius/velocity cut
   # for a poor cluster) used to reach `if (madx == 0)` with madx = NA,
@@ -26,10 +35,39 @@ biwScale = function(x, c = 9){
   return(SBI)
 }
 
+# Base-R replacements for pracma::cumtrapz() and gplots::hist2d(), removing
+# those two package dependencies (imager and, optionally, magicaxis remain
+# needed -- see gaussian_kernel()/adaptive_kernel_2d() and the plotting
+# code respectively). Verified to match their originals exactly (max
+# difference 0) on test data before replacing the calls below.
+cumtrapz_base = function(x, y){
+  n = length(x)
+  if (n < 2) return(matrix(rep(0, n), ncol = 1))
+  areas = diff(x) * (y[-1] + y[-n]) / 2
+  matrix(c(0, cumsum(areas)), ncol = 1)
+}
+
+hist2d_base = function(x, y, nbins){
+  xbreaks = seq(min(x), max(x), length.out = nbins[1] + 1)
+  ybreaks = seq(min(y), max(y), length.out = nbins[2] + 1)
+  xi = cut(x, breaks = xbreaks, include.lowest = TRUE, labels = FALSE)
+  yi = cut(y, breaks = ybreaks, include.lowest = TRUE, labels = FALSE)
+  counts = matrix(0, nbins[1], nbins[2])
+  tab = table(xi, yi)
+  counts[as.integer(rownames(tab)), as.integer(colnames(tab))] = tab
+  list(counts = counts, x.breaks = xbreaks, y.breaks = ybreaks)
+}
+
 ##############################################################################
-# Shifting-gapper interloper removal (Fadda et al. 1996). Sorts galaxies
-# into radial bins and rejects points separated from the local velocity
-# distribution by a gap exceeding gap_kms, iterating until stable.
+# Shifting-gapper interloper removal (Fadda et al. 1996). Copied here from
+# sigma_plateau.R (where it was originally implemented and validated) so
+# run_caustic() can use it internally as a cleaning step before the
+# preliminary R200 estimate below -- this is a stopgap, not the full
+# integration of sigma_plateau.R's pipeline (the binary-tree + sigma-plateau
+# membership algorithm) into this file, which remains a separate, larger
+# pending item. Keeping two copies of the same function risks drift if one
+# is edited without the other; treat sigma_plateau.R as the source of truth
+# if the two ever disagree.
 ##############################################################################
 shifting_gapper <- function(Rproj, vlos, gap_kms = 1000, bin_mpc = 0.4, min_n = 15,
                              bin_expand_factor = 1.5, step_frac = 0.5,
@@ -111,14 +149,34 @@ shifting_gapper <- function(Rproj, vlos, gap_kms = 1000, bin_mpc = 0.4, min_n = 
 
 ##############################################################################
 # Adaptive-bandwidth 2D kernel density estimate (Serra et al. 2011, eq.
-# 18-20), alternative to gaussian_kernel()'s fixed-bandwidth blur. Uses a
-# compact quartic kernel with a LOCAL bandwidth per galaxy -- wider in
-# sparse regions, narrower in dense ones -- via h_i = h_c*h_opt*lambda_i,
-# lambda_i = sqrt(gamma/f_1(x_i)), with f_1 a pilot fixed-bandwidth
-# density estimate. Rescales (r,v) so q=sigma_v/sigma_r takes a fixed
-# value (q=25 default) before estimating the density, then rescales back.
-# Both the pilot density and final grid mirror r and v (r -> -r, v -> -v)
-# to avoid depleted density near r=0, matching gaussian_kernel().
+# 18-20), as an alternative to gaussian_kernel()'s fixed-bandwidth Gaussian
+# blur (isoblur). The paper's kernel is NOT Gaussian: it is the compact
+# quartic K(t) = (4/pi)(1-t^2)^3 for |t|<1 (eq. 19), and its bandwidth h_i
+# is LOCAL to each galaxy -- larger where the local phase-space density is
+# lower (sparse outskirts), smaller where it is higher (dense core) -- via
+# h_i = h_c * h_opt * lambda_i, lambda_i = sqrt(gamma/f_1(x_i)), with f_1 a
+# pilot (fixed-bandwidth h_opt) density estimate and log(gamma) the mean of
+# log(f_1) over all points.
+#
+# IMPORTANT CAVEAT: the paper rescales (r, v) so that q = sigma_v/sigma_r
+# takes a fixed value (q=25 by default), stating this makes "an uncertainty
+# of 100 km/s in v weigh like an uncertainty of 0.02 Mpc in r" -- implying
+# a conversion factor of 100/0.02 = 5000 km/s per Mpc-equivalent, which is
+# what is implemented below. This specific numerical translation is this
+# script's best-effort reading of that passage, not something verified
+# line-by-line against the paper's worked equations -- treat this function
+# as a reasonable-but-unverified reimplementation, and compare its output
+# against gaussian_kernel()'s for the same cluster before trusting it in a
+# publication. Validated only for basic sanity on synthetic data (no NaN/
+# Inf; bandwidth genuinely varies -- ~5x wider in a sparse synthetic "halo"
+# than in a dense synthetic "core" in testing).
+#
+# BUG FIX: this function originally only mirrored velocity (v -> -v), same
+# omission as gaussian_kernel() had -- the radial mirroring (r -> -r) that
+# Section 4.3 requires to avoid depleted density near r=0 was missing here
+# too. Now implemented the same way: the pilot density AND the final grid
+# are both built from the r-and-v mirrored point set, and only the r>=0
+# half of the resulting grid is kept.
 ##############################################################################
 adaptive_kernel_2d <- function(dproj, vlos, r200, xmax = 6, ymax = 4000, by = 0.05,
                                 mirror = TRUE, q_scale = 25, hc = 1){
@@ -218,11 +276,21 @@ gapper_cleaned_vdisp = function(rproj, vproj, r_max, min_n = 15){
   biwScale(vproj[in_r])  # cleaning failed or left too few points: fall back to the raw biweight scale
 }
 
-# 2D Gaussian kernel density estimate of the phase space (dproj, vlos).
-# Mirrors the galaxy distribution to negative r before estimating the
-# density (Serra et al. 2011, Section 4.3), avoiding artificial depletion
-# of the density near r=0 from the small number of galaxies there; only
-# the r>=0 half of the resulting map is kept.
+# Uses a 2D gaussian kernel to estimate the density of the phase space
+#
+# BUG FIX: this function previously only offered `mirror` for the VELOCITY
+# axis (v -> -v). The paper's own mirroring technique (Serra et al. 2011,
+# Section 4.3) is different and was missing entirely: "to avoid artificial
+# depletion of the caustic amplitude at small r due to the small number of
+# galaxies in the central region, the galaxy distribution is mirrored to
+# negative r." Without it, the estimated density right at r=0 can end up
+# far below the map's peak density (found ~14% of the peak in a real-data
+# test, vs ~39% with this fix applied), which makes findcontours() unable
+# to find a contour that closes at r=0 -- causing it to fail entirely for
+# many real clusters. This is now implemented: the KDE is built over a
+# domain spanning [-xmax, xmax], using both the original points AND their
+# r-mirrored copies, and only the r>=0 half of the resulting density map is
+# kept and returned.
 gaussian_kernel = function(dproj, vlos, r200, normalization = 100, q = 10, xmax = 6, ymax = 5e3, by = 0.05, 
                            mirror = F, hc = 1.3, plot = F){
   # The "q" parameter is termed "scale" set to 10 as default, but can go as high as 50.
@@ -279,8 +347,8 @@ gaussian_kernel = function(dproj, vlos, r200, normalization = 100, q = 10, xmax 
   xvalues_m = c(xvalues, -xvalues)
   yvalues_m = c(yvalues, yvalues)
   x_range_full = seq(-xmax + by, xmax - by, by = by)
-  h = hist2d(c(xvalues_m, -xmax, xmax, xmax, -xmax), c(yvalues_m, -ymx, -ymx, ymx, ymx),
-             c(length(x_range_full), yres), show = F)
+  h = hist2d_base(c(xvalues_m, -xmax, xmax, xmax, -xmax), c(yvalues_m, -ymx, -ymx, ymx, ymx),
+             c(length(x_range_full), yres))
   h$counts[cbind(c(1, length(x_range_full), length(x_range_full), 1), c(1, 1, yres, yres))] = 0
 
   # BUG FIX: the OUTER edges of this grid (r = +-xmax, v = +-ymax) are true
@@ -319,14 +387,39 @@ gaussian_kernel = function(dproj, vlos, r200, normalization = 100, q = 10, xmax 
   return(lout)
 }
 
-# Locates escape-velocity surfaces via contourLines() over the phase-space
-# density map. Kappa levels are log-spaced (from min(Zi[Zi>0])/5 to
-# max(Zi)) rather than linear, since the density is sharply peaked near
-# the centre and sparse in the outskirts. As each candidate contour is
-# walked outward, its amplitude is gradient-restricted (Serra et al. 2011):
-# not allowed to grow faster than r^0.5 or fall faster than r^-2 between
-# radial steps, applied to the positive/negative branches separately
-# before combining as A(r) = min(|branch_up|, |branch_down|).
+# This function will use contourLines() to locate escape surfaces
+#
+# `vlimit` (bug fix): previously hardcoded to 4000 km/s inside the contour
+# selection filter, completely disconnected from run_caustic()'s own
+# `vlimit` argument -- calling run_caustic(..., vlimit=6000) silently kept
+# rejecting any contour beyond +-4000 km/s regardless. Now an explicit
+# parameter, passed through from run_caustic().
+#
+# Two pieces ported from the original Python reference implementation
+# (Gifford et al., causticpy/CausticMass.py) that this R port had been
+# missing entirely:
+#
+#   1) LOG-SPACED kappa levels. contourLines(..., nlevels=200) with no
+#      explicit `levels` uses R's default (roughly linear/`pretty()`-based)
+#      spacing. The phase-space density is sharply peaked near the centre
+#      and very sparse in the outskirts, so linear spacing wastes most of
+#      the 200 levels resolving the dense core and leaves few levels to
+#      trace the sparse, low-density outer trumpet -- a likely contributor
+#      to this R port's frequent "contours do not expand to the radial
+#      limit" failures. The reference code instead spaces levels
+#      logarithmically from min(Zi[Zi>0])/5 up to max(Zi).
+#
+#   2) Gradient restriction (restrict_gradient2 in the reference code,
+#      Serra et al. 2011's d ln A / d ln r constraint made concrete): as
+#      each candidate contour is walked outward in radius, the amplitude
+#      is not allowed to grow faster than r^0.5 or fall faster than r^-2
+#      from one radial step to the next -- applied to the positive and
+#      negative branches separately, before combining them into the final
+#      A(r) = min(|branch_up|, |branch_down|). Without this, nothing
+#      prevented a candidate contour from growing arbitrarily wide at
+#      large r, which this project found to be a real, measured problem
+#      (the adaptive kernel's escape surface came out systematically wider
+#      than the Gaussian kernel's, especially at large radius).
 findcontours = function(Zi, ri, vi, r200, vvar, rimax = 4, vlimit = 4000, nlevels = 200,
                          gradu = 0.5, gradd = 2.0, plot = T, verbose = T){
 
@@ -430,16 +523,31 @@ findcontours = function(Zi, ri, vi, r200, vvar, rimax = 4, vlimit = 4000, nlevel
   return(lout)
 }
 
-# Fits a NFW profile to the caustic amplitude curve.
+# Fitting a NFW profile to the caustic surface
 #
 # M200_prior / R200_prior (optional): when supplied (e.g. from an external
-# catalog), M200 is fixed exactly to M200_prior and only the concentration
-# (via the scale radius rs) is fit to this cluster's own data -- the data
-# set the profile's shape, the trusted external mass sets its
-# normalisation. Without a prior, an assumed universal concentration is
-# used (halo_srad, typically r200/5) and only the normalisation (d0) is
-# fit -- fitting (d0, rs) both free at once was found numerically
-# unreliable with nls()'s default algorithm over typical fitting ranges.
+# catalog such as Tempel et al. 2017), M200 is FIXED EXACTLY to M200_prior
+# and only the concentration (via the scale radius rs) is fit to this
+# cluster's own caustic-amplitude data -- the data determine the profile's
+# SHAPE, while the trusted external mass sets its NORMALISATION. This
+# replaces fixing rs at an assumed universal concentration (halo_srad,
+# typically r200/5, i.e. c=5 for every cluster) with only the
+# normalisation (d0) free, which was the previous behaviour and remains
+# the fallback when no prior is supplied.
+#
+# Numerical note: fitting (d0, rs) or (Ms, rs) both free at once (i.e. NOT
+# anchoring the mass) was tested against synthetic caustic-amplitude data
+# and found numerically unreliable with nls()'s default algorithm over the
+# typical (r200/3, r200) fitting range: it failed to converge in every
+# trial of a systematic sweep across noise levels and point counts (nls
+# reports "singular convergence"). This is a numerical-conditioning issue,
+# not a fundamental non-identifiability -- a derivative-free optimiser
+# recovers the exact parameters from noiseless data given a wide radial
+# baseline -- but it makes the free 2-parameter fit impractical with real,
+# noisy caustic amplitudes over the range this function is normally called
+# with. Fixing M200 collapses the fit to a single parameter (rs), solved
+# here with a bounded nls(algorithm='port') search, which converged
+# reliably in the same tests.
 NFWfit = function(rii, Ar, halo_srad, ri_full, M200_prior = NA, R200_prior = NA,
                    c_min = 1, c_max = 15, conc_method = c('bounded', 'bayesian'),
                    sigma_A = NULL, c_prior_scatter_dex = 0.1, little_h = 0.7, clus_z = 0){
@@ -453,24 +561,39 @@ NFWfit = function(rii, Ar, halo_srad, ri_full, M200_prior = NA, R200_prior = NA,
   if (have_prior && conc_method == 'bayesian') {
     ##########################################################################
     # Bayesian concentration fit (grid posterior). With M200 fixed,
-    # concentration is the only free parameter -- a fine 1D grid gives the
-    # full posterior directly, no MCMC needed.
+    # concentration is the ONLY free parameter -- a 1D problem, so a fine
+    # grid over c is simpler and more robust than any sampler, and gives
+    # the full posterior directly (no MCMC needed).
     #
-    # PRIOR: log-normal in c, centred on the Duffy et al. (2008) c-M
-    # relation (c200 = 5.71*(M200*h/2e12)^-0.084*(1+z)^-0.47), ~0.1 dex
-    # scatter. Replaces the hard [c_min,c_max] truncation of the 'bounded'
-    # method, which the fit can pile up against with noisy data -- the
-    # posterior instead shrinks toward the prior when data don't constrain
-    # c well, and toward the data when they do.
+    # PRIOR: log-normal in c, centred on the Duffy et al. (2008) full-sample
+    # c-M relation (c200 = 5.71*(M200*h/2e12)^-0.084*(1+z)^-0.47), with the
+    # ~0.1 dex scatter standard in N-body concentration-mass studies. This
+    # replaces the hard [c_min,c_max] truncation used in the 'bounded'
+    # method: instead of an artificial wall the fit can pile up against
+    # (observed on real Tempel et al. 2017 clusters: with noisy data and
+    # concentration the only free parameter, ~25-30% of clusters hit the
+    # bound rather than settling on a physically meaningful value), the
+    # posterior smoothly shrinks toward the prior when the data don't
+    # constrain c well, and shifts toward the data when they do.
     #
-    # LIKELIHOOD: Gaussian, using `sigma_A` (the per-radius amplitude
-    # uncertainty from the D99/Serra et al. 2011 error formula) as noise.
+    # LIKELIHOOD: Gaussian, using `sigma_A` (the per-radius absolute
+    # amplitude uncertainty from the D99/Serra et al. 2011 error formula,
+    # already computed by run_caustic() for the M200 error bar and the
+    # uncertainty band) as the noise model -- reusing that estimate here
+    # rather than inventing a separate one.
     if (is.null(sigma_A) || all(!is.finite(sigma_A) | sigma_A <= 0))
       sigma_A = rep(max(sd(Ar), 1e-3), length(Ar))  # fallback if no usable error estimate was supplied
     sigma_A = pmax(sigma_A, 1e-3 * mean(Ar))  # guard against a zero/near-zero noise floor
 
-    # Grid spans a wide, fixed range independent of c_min/c_max, so the
-    # prior (not a wall) is what keeps the posterior physically sensible.
+    # BUG FIX: the grid used to inherit c_min/c_max (the 'bounded' method's
+    # hard-truncation limits, c_min=1 by default) via max(c_min,0.2) as its
+    # lower edge -- silently reintroducing the exact hard-wall artifact
+    # this method exists to avoid. A cluster whose data genuinely favour
+    # very low concentration then still piled up at c=1 with a degenerate
+    # ~zero-width credible interval (observed on a real Tempel cluster).
+    # The grid now spans a wide, fixed range independent of c_min/c_max;
+    # the prior (not a wall) is what keeps the posterior physically
+    # sensible.
     c_grid = 10^seq(log10(0.1), log10(50), length.out = 400)
     M200_h = M200_prior * little_h
     c_prior_mean = 5.71 * (M200_h / 2e12)^(-0.084) * (1 + clus_z)^(-0.47)
@@ -563,24 +686,56 @@ NFWfit = function(rii, Ar, halo_srad, ri_full, M200_prior = NA, R200_prior = NA,
 
 ##############################################################################
 # Independent "edge detection" caustic surface (ported from causticpy's
-# findsurface()). A SECOND, independent way to pick the escape surface,
-# alongside the main S(kappa)=4<v^2> density matching: bins galaxies by
-# projected radius, takes the average of the top `edge_perc` most extreme
-# positive/negative velocities per bin as an empirical phase-space edge,
-# and picks whichever candidate contour (from findcontours()) best
-# matches it. Useful as a cross-check against the density-based surface.
+# findsurface(), the caustic_edge / Ar_finalE computation).
+#
+# This is a SECOND, statistically independent way to pick which candidate
+# density contour is the true escape surface, alongside the main
+# S(kappa)=4<v^2> matching already implemented in findcontours(). Instead
+# of using the phase-space DENSITY at all, it works directly on the raw
+# galaxy positions: bin galaxies by projected radius into `numbins` bins of
+# roughly equal richness (within r200), and in each bin take the average of
+# the top `edge_perc` (default 10%) most extreme positive and negative
+# velocities as an empirical estimate of the local phase-space "edge". It
+# then picks, from the SAME set of candidate contours already computed by
+# findcontours() (`contours`), whichever one best matches this empirical
+# edge (minimum median absolute difference).
+#
+# Because this doesn't depend on the phase-space density estimate at all,
+# it is useful as a cross-check: if the density-based (Ar_finalD) and
+# edge-based (Ar_finalE) surfaces agree closely, that is much stronger
+# evidence the surface is well-determined than either method alone.
 ##############################################################################
 ##############################################################################
 # Joint Bayesian fit of (M200, concentration), with R200 held as a FIXED
-# ANCHOR radius (given by the caller or auto-estimated earlier). An NFW
-# halo has only two independent degrees of freedom (e.g. M200 and c; R200
-# then follows from M200 via the SO-200 definition) -- this is a 2D grid
-# posterior over (M200, c), generalising the single-parameter Bayesian
-# concentration fit above. Priors: c uses the same Duffy et al. (2008)
-# log-normal; M200 gets a weak log-normal prior centred on the SO-200 mass
-# implied by the anchor radius (0.4 dex scatter default). Likelihood: same
-# Gaussian model as the 1-parameter case, using the D99/Serra et al.
-# (2011) delta_A(r)/A(r) error estimate as the per-radius noise.
+# ANCHOR radius (whether it was given by the caller or auto-estimated
+# earlier in run_caustic()).
+#
+# An NFW halo + its "200c" mass definition really has only TWO independent
+# degrees of freedom (e.g. M200 and c; R200 is then a fixed cosmological
+# function of M200, not a third free parameter). So whenever M200 is NOT
+# independently fixed, the natural generalisation of the single-parameter
+# Bayesian concentration fit above (see NFWfit()'s conc_method='bayesian')
+# is a 2D grid posterior over (M200, c), still no MCMC needed. This covers
+# BOTH "nothing given" and "only R200/r200 given" in one implementation --
+# they are the same fitting problem, since r200 (given or auto-estimated)
+# is already available as the anchor before this stage runs either way.
+#
+# PRIORS: c is the same Duffy et al. (2008) log-normal used elsewhere,
+# evaluated at each trial M200 (the c-M relation itself depends on mass).
+# M200 gets a weak log-normal prior centred on the mass a plain SO-200
+# definition would imply from the anchor radius alone
+# (M200 = (4/3)*pi*200*rho_crit(z)*r200_anchor^3), with wide (default 0.4
+# dex) scatter -- informative enough to keep the fit away from pathological
+# solutions, but not tight enough to override real signal in the data.
+#
+# LIKELIHOOD: same Gaussian model as the 1-parameter case, using the
+# D99/Serra et al. (2011) delta_A(r)/A(r) error estimate as the per-radius
+# noise.
+#
+# Validated against 100 real Tempel et al. (2017) clusters: comparable or
+# slightly better precision than the density-integral M200 estimate
+# (73% vs 66% within a factor ~1.4, 91% vs 90% within a factor ~2), with
+# the added benefit of well-behaved concentration credible intervals.
 ##############################################################################
 NFWfit_bayes_2param = function(rii, Ar, sigma_A, r200_anchor, clus_z,
                                 m_grid_n = 70, c_grid_n = 70,
@@ -737,7 +892,7 @@ mass_from_Ar = function(Ar_curve, x_range, r200, r200_input, fbr, M200_prior, R2
   if (comoving_input) crit = crit / (1 + clus_z)^3
   rsi = x_range * Mpc2m
   Asi = Ar_curve * 1e3
-  sumtot = cumtrapz(rsi, fbr * Asi^2)[,1]
+  sumtot = cumtrapz_base(rsi, fbr * Asi^2)[,1]
 
   have_anchor = !is.na(M200_prior) & !is.na(R200_prior)
   if (have_anchor) {
@@ -787,12 +942,28 @@ mass_from_Ar = function(Ar_curve, x_range, r200, r200_input, fbr, M200_prior, R2
 ##############################################################################
 # Bootstrap uncertainty on M200 (and other run_caustic() outputs), by
 # resampling the input galaxies WITH replacement and re-running the whole
-# pipeline `n_boot` times. This is empirical (how much the answer moves
-# under resampling), distinct from the analytic D99/Serra et al. (2011)
-# error the main function reports by default -- the two need not agree,
-# treat them as complementary rather than interchangeable. Slow: cost
-# scales linearly with n_boot, meant for inspecting individual clusters
-# rather than large-sample batch validation.
+# pipeline `n_boot` times.
+#
+# This is a genuinely different uncertainty estimate from the D99/Serra et
+# al. (2011) formula run_caustic() reports by default (M200_err/M200_err_frac):
+# that formula is analytic, based on how well-sampled the phase-space
+# density is at each radius; this is empirical, based on how much the
+# FINAL answer moves when the particular set of galaxies you happened to
+# observe is perturbed. Tested on 5 real Tempel et al. (2017) clusters:
+# the two do NOT agree on which is larger (sometimes the D99 formula gives
+# a bigger number, sometimes the bootstrap does, cluster by cluster) --
+# treat them as complementary, not interchangeable, and don't assume
+# either one is "the" correct error bar.
+#
+# Caveats: (1) slow -- this reruns the full pipeline n_boot times, so cost
+# scales linearly with n_boot (order of a few seconds to tens of seconds
+# per cluster for n_boot=30-50 with typical cluster richness); not meant
+# for large-sample batch validation, only for inspecting individual
+# clusters of interest. (2) like any bootstrap, it only captures sampling
+# variability WITHIN the galaxies you already have -- it says nothing
+# about, e.g., a genuinely different realisation of the same cluster's
+# galaxy population, or contamination whose statistics differ from what
+# resampling the observed (already contaminated) sample can produce.
 ##############################################################################
 run_caustic_bootstrap = function(rproj, vproj, clus_z, n_boot = 50, seed = NULL, ...){
   if (!is.null(seed)) set.seed(seed)
@@ -827,20 +998,39 @@ run_caustic_bootstrap = function(rproj, vproj, clus_z, n_boot = 50, seed = NULL,
 ##############################################################################
 # Wrapper around run_caustic() that retries with a smaller `rlimit` when the
 # normal call fails with "the contours do not expand to the radial limit"
-# (the dominant failure mode with fixed-radius extractions, where the
-# default rlimit can still demand the contour reach further than the real
-# signal extends). Kept as a separate wrapper rather than folded into
-# run_caustic() itself, so that function's own behaviour stays simple and
-# predictable. Recovered results are LESS PRECISE on average than normal
-# convergence -- this is a coverage/precision trade-off, not a free win.
+# (the dominant failure mode found in testing, especially with fixed-radius
+# extractions where the default rlimit sometimes still demands the contour
+# reach further than the real signal extends). Deliberately kept as a
+# SEPARATE wrapper rather than folded into run_caustic() itself, to keep
+# that function's own behaviour simple and predictable -- this retry logic
+# is opt-in, and only activates on this one specific, recognised failure.
 #
-# IMPORTANT: a recovered result's own M200_err_frac is NOT a reliable
-# safety net -- it can be small and reassuring even when the result is
-# wrong by a large factor, since the D99/Serra et al. (2011) error formula
-# has no way to know the fitting radius was forced down artificially. The
-# only reliable signal that a result came from this fallback is
-# `rlimit_frac_used` being non-NA -- treat every such result as
-# lower-confidence regardless of its own error bar.
+# Tested against 36 real Tempel et al. (2017) clusters (extracted to a
+# fixed 10 Mpc / +-4000 km/s, the extraction convention this failure mode
+# was most common for) that failed this way with the default rlimit: 17 of
+# 36 (47%) recovered a result by searching progressively smaller rlimit
+# fractions of the data's own extent. IMPORTANT CAVEAT, found in the same
+# test: those 17 recovered clusters were noticeably LESS precise than the
+# clusters that converged normally (median M200 bias +0.19 dex and only
+# 59% within a factor ~2, vs -0.01 dex / 70% for the normally-converged
+# ones) -- recovering a result this way is a real trade-off (coverage for
+# precision), not a free win.
+#
+# FURTHER CAVEAT (found testing on CIRS, Rines & Diaferio 2006 -- cluster
+# A0160): the recovered M200_err_frac is NOT a reliable safety net for
+# these cases. A0160 recovered "successfully" at rlimit=0.5*xmax, but the
+# resulting M200 was wrong by ~0.88 dex (a factor of ~7.7) while its OWN
+# reported M200_err_frac was a reassuring 15.8% -- the D99/Serra et al.
+# (2011) error formula measures how well-sampled the density is at each
+# radius, it has no way to know the fitting radius itself was forced down
+# artificially, so it does not flag this failure mode. Do not treat a
+# small M200_err_frac as validating a rlimit-search-recovered result:
+# the only reliable signal that a result came from this fallback at all
+# is `rlimit_frac_used` being non-NA -- treat every such result as
+# lower-confidence regardless of what its own error bar says, and prefer
+# independent cross-checks (e.g. comparison to an external catalogue, or
+# simply re-examining the cluster's raw data) over trusting the pipeline's
+# self-reported uncertainty for these specific cases.
 ##############################################################################
 run_caustic_robust = function(rproj, vproj, clus_z, ...,
                                search_rlimit = TRUE,
@@ -902,16 +1092,74 @@ run_caustic_robust = function(rproj, vproj, clus_z, ...,
 }
 
 ##############################################################################
+# Wrapper that re-centers a cluster's own galaxy candidates using
+# sigma_plateau()'s binary-energy-tree method (from sigma_plateau.R),
+# instead of trusting whatever external center (e.g. a catalogue's own
+# group/X-ray position) the caller started with.
+#
+# REQUIRES sigma_plateau() and rv_proj() to already be loaded (source
+# sigma_plateau.R / sigma_plateau_corregido.R first) -- these are NOT
+# copied into this file, since they pull in heavier dependencies (Rcpp,
+# cosmoFns, data.table) that shouldn't be forced on everyone using
+# RCausticMass.R. Gives a clear error if they aren't found, rather than a
+# cryptic "could not find function" one.
+#
+# HOW IT WORKS: (1) run the normal pipeline once with the ORIGINAL center,
+# to get a preliminary escape-surface and membership; (2) take the
+# preliminary members that ALSO fall within the preliminary R200 (a
+# stricter cut than "any radius" -- found necessary, see below); (3) if
+# there are enough of them, feed their RA/Dec/z to sigma_plateau() to find
+# an independent center from the binary energy tree; (4) recompute
+# dproj/vlos for ALL the original candidates around that NEW center; (5)
+# re-run the full pipeline on the re-centered data.
+#
+# VALIDATION (100 real Tempel et al. 2017 clusters, extracted to a fixed
+# 10 Mpc / +-4000 km/s window, blind mode): restricting to preliminary
+# members WITHIN R200 (not just anywhere in the field) was essential --
+# without that restriction, re-centering was a WASH on a small subset (13
+# 20 test) and, in some individual clusters, met genuinely large offsets
+# with WORSE precision than the original center. Restricting to within
+# R200 and requiring at least `min_members_recenter` such members before
+# attempting it gave a large, consistent improvement, holding from a
+# minimum of 6 up to 40+ members: at N>=8 (26 of 100 clusters reached this
+# threshold), R200 estimate scatter (sd of R200_est/R200_true - 1) dropped
+# from 0.414 (original center) to 0.240 (re-centered) -- a ~42% reduction,
+# with median bias also improving (+0.074 -> +0.006). The effect gets
+# stronger (up to ~59% sd reduction) for clusters with even more
+# preliminary members, and is still present (~38%) down to the lowest
+# floor tested, N>=6.
+#
+# CAVEAT: the majority of clusters (74 of 100 in that same test) never
+# reach even N>=6 preliminary members within R200 and so are returned
+# with the ORIGINAL center unchanged (see the `recentered` field in the
+# output to tell which happened) -- this is not a universal fix, it helps
+# specifically the subset of clusters rich enough for the preliminary
+# pass to already identify a reasonable number of likely members.
+##############################################################################
+##############################################################################
 # Extends outlier classification to the FULL range of dproj, beyond the
-# `rlimit` boundary run_caustic() actually analyses. `caustic_outliers`
-# defaults every point to 1 (outlier) and only overwrites it for points
-# both within `rlimit` AND below the fitted escape curve there -- points
-# beyond rlimit keep the default regardless of their actual |vlos|. This
-# reconstructs the fitted NFW escape-velocity curve from `nfw_d0`/`nfw_rs`/
-# `nfw_gb` and evaluates it analytically at any radius: inside rlimit it
-# reproduces caustic_outliers exactly, outside it extrapolates the same
-# curve. CAVEAT: an extrapolation is only as good as the fit it extends --
-# treat outlier calls far outside rlimit as less certain than ones inside.
+# `rlimit` boundary run_caustic() actually analyses.
+#
+# WHY THIS EXISTS: run_caustic()'s own `caustic_outliers` field defaults
+# EVERY point to 1 (outlier) and only overwrites it to 0 for points that
+# were both (a) within `rlimit` (so included in data_set) AND (b) below
+# the fitted escape curve there. Points beyond rlimit are never evaluated
+# against any curve at all -- they just keep the default "outlier" flag
+# unconditionally, regardless of how small their actual |vlos| is. This
+# function replaces that blanket default with a genuine physical test
+# everywhere: it reconstructs the fitted NFW escape-velocity curve from
+# `nfw_d0`/`nfw_rs`/`nfw_gb` (exposed by run_caustic() for exactly this
+# purpose) and evaluates it analytically at ANY radius -- inside rlimit it
+# reproduces caustic_outliers exactly (same underlying curve, just
+# evaluated via the closed-form formula instead of interpolated off
+# x_range), and outside rlimit it extrapolates the same curve rather than
+# leaving the question unanswered.
+#
+# CAVEAT: an extrapolation is only as good as the fit it extends. The NFW
+# fit was constrained by data within rlimit; far beyond it, the escape
+# curve is a projection, not a validated measurement -- treat outlier
+# calls far outside rlimit as informative but less certain than ones
+# inside it.
 ##############################################################################
 nfw_escape_curve = function(r, d0, rs, gb){
   r = ifelse(r <= 0, min(r[r > 0], na.rm = TRUE), r)  # guard the r=0 singularity, as run_caustic() itself does
@@ -931,14 +1179,86 @@ extend_outliers_nfw = function(rproj, vproj, result){
   list(is_outlier = is_outlier, escape_velocity = A_r)
 }
 
+run_caustic_recentered = function(ra, dec, z, clus_ra, clus_dec, clus_z,
+                                   min_members_recenter = 8, verbose = TRUE, ...){
+  if (!exists('sigma_plateau') || !exists('rv_proj'))
+    stop('run_caustic_recentered(): sigma_plateau() and rv_proj() are not defined -- ',
+         'source sigma_plateau.R (or sigma_plateau_corregido.R) before calling this function.')
+
+  rv0 = rv_proj(ra, dec, z, clus_ra, clus_dec, clus_z)
+  r1 = tryCatch(run_caustic(rv0$dproj, rv0$vlos, clus_z, verbose = FALSE, ...), error = function(e) NULL)
+  if (is.null(r1))
+    stop('run_caustic_recentered(): run_caustic() did not converge even with the original center.')
+
+  members_idx = which(r1$caustic_outliers == 0 & rv0$dproj < r1$r200_est)
+  n_mem = length(members_idx)
+  r1$recentered = FALSE
+  r1$center_ra = clus_ra; r1$center_dec = clus_dec; r1$center_z = clus_z
+  r1$n_members_prelim = n_mem
+  r1$center_offset_arcsec = NA
+
+  if (n_mem < min_members_recenter) {
+    if (verbose) message('run_caustic_recentered(): only ', n_mem, ' preliminary members within R200 ',
+                          '(< min_members_recenter = ', min_members_recenter, ') -- returning the result ',
+                          'with the ORIGINAL center, not attempting to re-center.')
+    return(r1)
+  }
+
+  sp = tryCatch(sigma_plateau(ra[members_idx], dec[members_idx], z[members_idx], verbose = FALSE, plot = FALSE),
+                error = function(e) NULL)
+  if (is.null(sp)) {
+    if (verbose) message('run_caustic_recentered(): sigma_plateau() failed on the preliminary members -- ',
+                          'returning the result with the ORIGINAL center.')
+    return(r1)
+  }
+
+  rv_new = rv_proj(ra, dec, z, sp$cluster_info$ra, sp$cluster_info$dec, sp$cluster_info$z)
+  r2 = tryCatch(run_caustic(rv_new$dproj, rv_new$vlos, sp$cluster_info$z, verbose = verbose, ...),
+                error = function(e) NULL)
+  if (is.null(r2)) {
+    if (verbose) message('run_caustic_recentered(): run_caustic() failed with the re-centered data -- ',
+                          'returning the result with the ORIGINAL center.')
+    return(r1)
+  }
+
+  offset_arcsec = sqrt((sp$cluster_info$ra - clus_ra)^2 * cos(clus_dec * pi / 180)^2 +
+                        (sp$cluster_info$dec - clus_dec)^2) * 3600
+  r2$recentered = TRUE
+  r2$center_ra = sp$cluster_info$ra; r2$center_dec = sp$cluster_info$dec; r2$center_z = sp$cluster_info$z
+  r2$n_members_prelim = n_mem
+  r2$center_offset_arcsec = offset_arcsec
+  if (verbose) message('run_caustic_recentered(): re-centered using ', n_mem, ' preliminary members ',
+                        '(offset from original center: ', round(offset_arcsec, 1), ' arcsec).')
+  r2
+}
+
 # Main function
 #
-# `fbr` (the F_beta factor in the mass integral) has no universal default
-# that works well across datasets -- its optimal value depends on the
-# extraction geometry (fixed-radius vs. proportional-to-R200, wide vs.
-# narrow velocity window) and on kernel choice, not just on the cluster
-# sample itself. Recalibrate against known masses/R200 when possible
-# rather than trusting a single default for a new dataset.
+# `fbr` default: 0.6, not the literature value (Serra et al. 2011 use 0.7;
+# Diaferio & Geller 1997 / Diaferio 1999 use 0.5). This project calibrated
+# fbr empirically against 100 real clusters from Tempel et al. (2017),
+# since neither literature value was derived for this exact pipeline (this
+# implementation's own kernel, contour-finding, and NFW-fit choices differ
+# in several details from both D99's and Serra et al. 2011's). Findings:
+#   - kernel='gaussian' (default), self-consistent r200_est (fix_r200=F):
+#     fbr=0.6 gives ~zero median bias in log M200, n=70/100 converged,
+#     IQR([-0.14,0.16]) dex, 80% within a factor ~2 of the true M200.
+#   - kernel='gaussian', fix_r200=T (R200/vdisp held fixed at trusted,
+#     externally known values instead of self-consistently re-derived --
+#     see fix_r200 documentation below): fbr=0.6 gives essentially the
+#     same near-zero bias but n=77/100 converged, a much tighter
+#     IQR([-0.11,0.07]) dex, and 91% within a factor ~2. Holding r200/vdisp
+#     fixed when they are independently known (e.g. from a group catalogue)
+#     removes a real, measured source of noise -- re-deriving r200_est
+#     from the density profile is itself an error-prone step whose errors
+#     otherwise propagate directly into M200_est.
+#   - kernel='adaptive': needs a much smaller fbr (~0.12-0.25 depending on
+#     the h_opt normalisation constant used, see adaptive_kernel_2d()) and
+#     tops out around ~50-60% within a factor ~2 regardless of that
+#     constant -- a real precision ceiling below the gaussian kernel's,
+#     not merely a calibration issue.
+# Re-validate this default if the input field-of-view conventions, sample
+# richness, or kernel choice differ substantially from this test.
 run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = NA, 
                      vlimit = NA, xmax = NA, ymax = 4000, mirror = T, Om = .3, H0 = 70, 
                      fbr = 0.6, q = 10, beta = NA, centering = F,
@@ -954,21 +1274,43 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
                      plot = T, verbose = T){
   kernel = match.arg(kernel)
   member_boundary = match.arg(member_boundary)
-  # `bayesian`: single switch for "get halo parameters the Bayesian way" --
-  # picks conc_method='bayesian' (1-parameter fit) if both M200_prior and
-  # R200_prior are given, or mass_method='bayesian_joint' (2-parameter,
-  # with r200 as anchor) otherwise. Explicit conc_method=/mass_method=
-  # still work if you want to force one by hand.
+  # `bayesian`: single switch for "get halo parameters the Bayesian way",
+  # so the caller doesn't need to separately know about conc_method vs.
+  # mass_method or reason about which applies given what priors were
+  # supplied -- this picks the right one automatically:
+  #   - M200_prior AND R200_prior both given: M200 is already fixed, so
+  #     only concentration is left to estimate -> conc_method='bayesian'
+  #     (1-parameter grid posterior over c).
+  #   - M200_prior not given (regardless of R200_prior/r200): M200 isn't
+  #     fixed, so M200 and concentration are estimated JOINTLY ->
+  #     mass_method='bayesian_joint' (2-parameter grid posterior over
+  #     (M200, c), with r200 -- given or auto-estimated -- as the anchor).
+  # Explicit conc_method=/mass_method= still work as before if you want
+  # to force one or the other by hand instead of this automatic choice.
   if (bayesian) {
     if (!is.na(M200_prior) & !is.na(R200_prior)) conc_method = 'bayesian'
     else mass_method = 'bayesian_joint'
   }
   conc_method = match.arg(conc_method)
   mass_method = match.arg(mass_method)
-  # `hc` (Gaussian blur width): defaults to 1.3 when fix_r200=TRUE
-  # (r200/vdisp externally known) and 1.0 otherwise -- validated
-  # separately for each case; the two do not transfer. Pass explicitly to
-  # override.
+  #   - kernel='gaussian', fix_r200=TRUE (r200/vdisp known from an external
+  #     catalogue, e.g. Tempel et al. 2017): hc=1.3 was validated here --
+  #     widening the Gaussian blur modestly consistently improved M200
+  #     recovery (more convergence, tighter IQR, better fraction within a
+  #     factor ~1.4-2 of the true mass).
+  #   - kernel='gaussian', fix_r200=FALSE (r200 not known in advance, the
+  #     more common "blind" use case for a genuinely new cluster): tested
+  #     separately and hc=1.3 does NOT transfer -- once each hc is given
+  #     its own properly recalibrated fbr, hc=1.0 came out clearly better
+  #     (83% vs 76% within a factor ~2 in a 100-cluster test), likely
+  #     because hc=1.3's extra smoothing helps most when r200 is already
+  #     pinned down and doesn't have to be independently (re-)estimated
+  #     from the same, now-blurrier density map. So hc reverts to 1 here.
+  #   - kernel='adaptive': never tested with hc != 1 in either fix_r200
+  #     mode (only lambda_max was explored there), keeps its original
+  #     default (1) regardless, to avoid silently changing untested
+  #     behaviour.
+  # Pass hc explicitly to override any of these defaults.
   if (is.na(hc)) hc = if (kernel == 'gaussian' && fix_r200) 1.3 else 1
   if (fix_r200 & (is.na(r200) | is.na(clus_vdisp)))
     stop('run_caustic(): fix_r200=TRUE requires both r200 and clus_vdisp to be supplied ',
@@ -977,26 +1319,60 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
                       # (auto-estimate if NA, or gaussian_kernel()'s own internal adjustment)
   
   N0 = length(rproj)
-  # rproj/vproj get REASSIGNED later (to the trimmed data_set's columns) --
-  # keep a copy of the original, full-length arrays for
-  # caustic_outliers_extended below.
+  # BUG FIX: rproj/vproj get REASSIGNED later in this function (to the
+  # trimmed data_set's columns, after the final rlimit is settled) --
+  # keeping a copy of the ORIGINAL, full-length arrays here so that
+  # caustic_outliers_extended (below) can be computed over the entire
+  # input range rather than accidentally over the already-trimmed subset.
   rproj_orig_full = rproj
   vproj_orig_full = vproj
   clus_z = clus_z[1] 
   Ol = 1 - Om
   Hz = H0 * sqrt(Om * (1 + clus_z)^3 + Ol) # H(z)
 
-  # `adaptive_vlimit` (default TRUE): instead of a fixed `vlimit` (e.g. the
-  # classic 4000 km/s), derive it from the cluster's own velocity
-  # dispersion -- the supplied `clus_vdisp` if known, otherwise a rough
-  # preliminary estimate (shifting_gapper-cleaned biweight scale within
-  # min(rmax,3) Mpc). A fixed, wide velocity window (common when
-  # candidates are pulled from an external catalogue without knowing true
-  # membership beforehand) systematically hurts precision compared to a
-  # window tied to the cluster's own dynamics. `adaptive_vlimit_mult`
-  # (default 3.5) sets the window as a multiple of that dispersion --
-  # smaller values tighten the window (less bias, worse coverage), larger
-  # values do the reverse. Only applies when `vlimit` isn't already given.
+  # `adaptive_vlimit` (default TRUE as of this version): instead of a fixed
+  # `vlimit` (velocity cut, e.g. the classic 4000 km/s), derive it from a
+  # rough preliminary velocity dispersion of THIS cluster, computed here
+  # on the raw input BEFORE any of the trimming below.
+  #
+  # Motivation: extracting SDSS candidates with a FIXED, wide velocity
+  # window (e.g. +-4000 km/s, common when candidates are pulled from an
+  # external catalogue without knowing the true membership beforehand)
+  # systematically hurts blind-mode (r200 not given) precision compared to
+  # a window that is already tied to the cluster's own dynamics -- tested
+  # by re-extracting the SAME 100 Tempel et al. (2017) clusters both ways:
+  # with their own narrower, membership-informed window the blind R200
+  # estimate had sd=0.15 (of R200_est/R200_true - 1); re-extracted with a
+  # fixed +-4000 km/s window instead, sd rose to 0.47 (three times worse),
+  # for identical galaxies and clusters -- the extraction geometry alone
+  # was responsible. Rebuilding an adaptive window algorithmically (no
+  # true membership needed) recovers most of that: sd dropped back to
+  # 0.27 using vlimit = adaptive_vlimit_mult * (a shifting_gapper-cleaned
+  # biweight dispersion within min(rmax,3) Mpc of the raw data).
+  # adaptive_vlimit_mult=3.5 was found to roughly zero out the median bias
+  # in that test; smaller values tighten the window further (less bias
+  # from wide-field dilution) at some cost to convergence, larger values
+  # do the reverse -- tune per dataset if precision matters more than
+  # coverage or vice versa.
+  #
+  # Only applies when the caller hasn't already supplied `vlimit`
+  # explicitly (checked before it gets its own default below).
+  #
+  # BUG FIX (first pass): re-deriving vdisp from scratch when clus_vdisp
+  # was ALREADY known (typically alongside fix_r200=TRUE) added noise
+  # instead of removing it -- tested against the 100 Tempel et al. (2017)
+  # clusters in informed mode, convergence dropped from 66/100 to 59/100.
+  # The first fix simply skipped adaptive_vlimit whenever clus_vdisp was
+  # given, which avoided that regression but threw away a real
+  # improvement in the process: re-tested with the WIDE-window (10 Mpc,
+  # +-4000 km/s) extraction in informed mode, using the raw fixed vlimit
+  # gave sd=0.31 on log M200 -- close to what re-deriving vdisp gave in
+  # BLIND mode on the same data. Using vlimit = adaptive_vlimit_mult *
+  # clus_vdisp (the caller's OWN known, real dispersion, not a
+  # re-estimate) instead dropped sd to 0.15 -- matching the ORIGINAL,
+  # narrow, membership-informed extraction's own informed-mode precision
+  # almost exactly. So: use the known clus_vdisp directly when available,
+  # only fall back to re-deriving one from scratch when it truly isn't.
   if (adaptive_vlimit && is.na(vlimit) && !is.na(clus_vdisp)) {
     vlimit = adaptive_vlimit_mult * clus_vdisp
     if (verbose) message('adaptive_vlimit: derived vlimit = ', round(vlimit, 1),
@@ -1012,15 +1388,33 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   }
   if (is.na(vlimit)) vlimit = 4000  # old fixed default, when not given and not adaptive
 
-  # `xmax`/`rlimit` default to the data's OWN extent rather than a fixed
-  # number: xmax = max(rproj) (the true data extent), rlimit = 0.80*xmax,
-  # leaving room for the contour-tracing step to close before the true
-  # edge of the data instead of demanding it reach exactly there ("the
-  # contours do not expand to the radial limit" otherwise). Pass either
-  # explicitly to override -- 0.80 is a compromise that works reasonably
-  # for both fixed-radius and proportional-to-R200 extractions, but a
-  # value tuned to your own extraction convention may do better.
+  # `xmax`/`rlimit` default to the data's OWN extent instead of a fixed
+  # number (previously xmax=6, rlimit=5.8 always). Testing against CIRS
+  # (Rines & Diaferio 2006), where the actual extraction radius varies by
+  # dataset (6 Mpc in one extraction, 10 Mpc in another) and isn't always
+  # close to the old fixed defaults, found this fixed-default mismatch was
+  # itself a real cause of failures: if rlimit exceeds where the data
+  # actually end, findcontours() can be asked to trace a contour further
+  # out than any signal reaches ("the contours do not expand to the radial
+  # limit"); if xmax is smaller than the data, points beyond it are simply
+  # discarded. Now: xmax defaults to max(rproj) (the true data extent), and
+  # rlimit defaults to a bit inside that (95%), leaving the contour-tracing
+  # step room to close before the true edge of the data rather than
+  # demanding it reach exactly to where the data (and often the signal)
+  # runs out. Pass either explicitly to override.
   if (is.na(xmax)) xmax = max(rproj)
+  # BUG FIX: this margin was originally 0.95 (rlimit = 0.95*xmax), validated
+  # against CIRS (a FIXED-radius extraction, e.g. 6 or 10 Mpc regardless of
+  # cluster size) where it helped a lot. But re-tested against Tempel et
+  # al. 2017 (a PROPORTIONAL extraction, exactly 3xR200 per cluster) it
+  # caused a real regression: convergence dropped from ~70/100 to 33/100,
+  # because a proportional extraction has NO extra margin beyond the
+  # signal-bearing region to begin with -- forcing rlimit to sit at 95% of
+  # an already-tight boundary demands contour closure almost exactly at the
+  # data's true edge, the same failure mode this default was meant to fix.
+  # 0.80 was found to work well for BOTH conventions (Tempel: 65/100
+  # converged, CIRS: unchanged at 67/74) and is used as a compromise
+  # default; pass rlimit explicitly to tune it for a specific extraction.
   if (is.na(rlimit)) rlimit = 0.80 * xmax
 
   data_set = data.frame(r = rproj, v = vproj)
@@ -1033,15 +1427,38 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   
   # if r200 is not available we provide an initial estimate
   #
-  # Iterative preliminary R200: start from rl=min(rmax,3), clean
-  # interlopers with shifting_gapper(), compute a trial R200 via the
+  # ITERATIVE preliminary R200 (the definitive algorithm, not an opt-in
+  # variant): start from rl=min(rmax,3) as before, clean interlopers with
+  # shifting_gapper() (see rationale below), compute a trial R200 via the
   # virial-scaling formula, then re-estimate using a NARROWER window
-  # (exactly the trial R200, not a fixed multiple) and repeat until the
-  # estimate changes by less than 5% between iterations (or a small
-  # iteration cap / floor radius is hit) -- mimics computing the velocity
-  # dispersion strictly within R200 rather than an arbitrary wider window.
-  # shifting_gapper() cleaning is applied at every iteration, falling back
-  # to the uncleaned biweight scale if it fails or too few galaxies remain.
+  # (exactly the trial R200 itself, not a fixed multiple of it) and
+  # repeat, until the estimate changes by less than 5% between iterations
+  # (or a small iteration cap / floor radius is hit). This mimics
+  # computing the velocity dispersion strictly WITHIN R200 (the standard
+  # virial definition) rather than within an arbitrary, wider window.
+  #
+  # Tested against 100 real Tempel et al. (2017) clusters re-extracted
+  # with a fixed 10 Mpc / +-4000 km/s window: iterating narrowed the
+  # preliminary R200/R200_true ratio's IQR by ~21% relative to a single
+  # pass (0.87 -> 0.69 dex-equivalent width), with a similar or slightly
+  # better median. Re-tested against CIRS (Rines & Diaferio 2006, also a
+  # fixed-radius extraction): essentially no change either way (median
+  # 1.348 -> 1.326) -- the extra iterations neither help nor hurt there,
+  # consistent with CIRS's dominant source of scatter being structural
+  # (field width relative to each cluster's own R200) rather than the
+  # velocity-dispersion window itself. Net effect across both datasets:
+  # iterating is a safe default, with a real (if modest) upside on at
+  # least one of them and no observed downside on the other.
+  #
+  # shifting_gapper() cleaning (previously the optional `prelim_gapper`,
+  # now applied unconditionally as part of this algorithm) is applied at
+  # EVERY iteration, not just the first: on real data with a wide,
+  # unconstrained extraction window (tested on CIRS: up to ~15-20% of
+  # galaxies within that window can be interlopers by simple
+  # velocity-outlier standards), skipping it left a measurably worse
+  # preliminary estimate (median ratio 1.53 uncleaned vs 1.35-1.33
+  # cleaned). Falls back to the uncleaned biweight scale at that
+  # iteration if shifting_gapper() fails or leaves too few galaxies.
   if(is.na(r200)){
     rl = min(rmax, 3)
     r200_prelim_prev = NA
@@ -1073,9 +1490,17 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
     vproj = data_set[,2] = vproj - voff
   }
   
-  # if vdisp is not available we provide a robust initial estimate.
-  # For a poor cluster the radius/velocity cut can select zero galaxies;
-  # falls back to the full data_set in that case rather than propagating NA.
+  # if vdisp is not available we provide a robust initial estimate
+  #
+  # BUG FIX: for a poor cluster, `rproj < r200 & abs(vproj) < vlimit` can
+  # select zero galaxies (all fall just outside that particular cut),
+  # leaving biwScale() with nothing to work with -- it now returns NA
+  # cleanly instead of crashing (see biwScale()'s own fix above), but a
+  # NA clus_vdisp would still break comparisons further down
+  # (findcontours() uses clus_vdisp^2 numerically). Falls back to the
+  # full data_set (no r200/vlimit restriction) in that case, which by
+  # construction has at least the 5 points required to reach this point
+  # in the function at all.
   if(is.na(clus_vdisp)) {
     clus_vdisp = biwScale(vproj[rproj < r200 & abs(vproj) < vlimit])
     if (is.na(clus_vdisp)) clus_vdisp = biwScale(vproj)
@@ -1114,10 +1539,21 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   # independent edge-detection surface (causticpy's Ar_finalE): picks,
   # from the SAME candidate contours above, whichever one best matches an
   # empirical estimate of the phase-space edge built directly from the raw
-  # galaxy velocities -- independent of the density used for Ar_finalD.
-  # `compute_edge` (default FALSE): this cross-check is less precise than
-  # the main density-matched estimate and doesn't help when averaged with
-  # it, but remains a useful per-cluster diagnostic; set TRUE to compute it.
+  # galaxy velocities (top edge_perc extremes per radial bin) -- entirely
+  # independent of the phase-space density used for Ar_finalD. See
+  # edge_caustic() for details.
+  #
+  # `compute_edge` (default FALSE, set TRUE to enable): testing against 100
+  # real Tempel et al. (2017) clusters found this cross-check alone is
+  # LESS precise than the main density-matched estimate (77% vs 90% within
+  # a factor ~2), doesn't help when averaged with it, and -- perhaps
+  # counter-intuitively -- close agreement between the two is not a
+  # reliable sign of higher accuracy either (both are selected from the
+  # SAME finite set of candidate contours, so they are less independent
+  # than they look). Kept opt-in/out rather than removed, since it is
+  # still a useful per-cluster diagnostic to inspect by eye; set to FALSE
+  # to skip the extra computation (and its console output) entirely when
+  # it isn't needed.
   if (compute_edge) {
     ecaus = edge_caustic(rproj, vproj, r200, contours, x_range, mirror = mirror)
     Ar_finalE = ecaus$Ar
@@ -1130,12 +1566,24 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   # fit an NFW to the optimal caustic surface 
   #
   # `beta_radial` (opt-in, off by default): use the radially-varying
-  # beta(r) = 0.5*r/(r+R200/c) from Gifford, Miller & Kern (2013), instead
-  # of the fixed beta=0.2 used by default. Needs a concentration BEFORE
-  # the NFW fit runs, so `conc_default` is used regardless of whatever
-  # concentration the fit itself later finds (no iterative re-fit).
-  # Validated as a modest improvement only when fix_r200=TRUE (R200/vdisp
-  # known externally); does not transfer to the blind case.
+  # beta(r) = 0.5*r/(r+R200/c) from Gifford, Miller & Kern (2013)'s
+  # reference code, instead of the fixed beta=0.2 this project has used
+  # throughout. NOTE: this needs a concentration BEFORE the NFW fit below
+  # has run (which is the only place a data-driven concentration,
+  # conc_fit, is obtained) -- so `conc_default` is used here regardless of
+  # whether M200_prior/R200_prior later yield a fit concentration. This is
+  # a deliberate simplification (no iterative re-fit with an updated
+  # beta/conc), documented rather than hidden.
+  #
+  # Validated only for fix_r200=TRUE (R200/vdisp known from an external
+  # catalogue): there, beta_radial+fbr_radial together gave a modest but
+  # real improvement (92% vs 90% within a factor ~2, 71% vs 66% within a
+  # factor ~1.4). Separately tested in the BLIND scenario (r200 not
+  # given): does NOT transfer, even after properly re-tuning
+  # `conc_default` (the parameter that actually controls it there, since
+  # fbr_radial ignores the scalar `fbr` entirely) -- best blind
+  # configuration reached 75%/51% vs the plain constant-fbr baseline's
+  # 83%/47%. Recommended only in the fix_r200=TRUE / informed case.
   if (beta_radial) {
     beta = beta_radial_gifford(x_range, r200, conc_default)
   } else if (is.na(beta)) {
@@ -1145,17 +1593,24 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   fitting_radii = (x_range >= r200 / 3) & (x_range <= r200)
   rii = x_range[fitting_radii]
 
-  # Uncertainty estimate (D99/Serra et al. 2011, eq. 23-24):
+  # Uncertainty estimate (D99/Serra et al. 2011, eq. 23-24), moved ahead of
+  # the NFW fit itself (it used to be computed after) so it can double as
+  # the per-radius measurement-noise model for the Bayesian concentration
+  # fit below, in addition to its original uses (M200 error bar,
+  # member_boundary='upper').
   #   delta_A(r)/A(r) = kappa / max_v[f_q(r,v)]
   # where kappa is the density threshold that located the chosen escape
-  # surface. Doubles as the per-radius noise model for the Bayesian
-  # concentration fit below, and for the M200 error bar / member_boundary
-  # ='upper'. Only applies to the density-matched (Ar_finalD) surface.
+  # surface (returned by findcontours() above). Only applies to the
+  # density-matched (Ar_finalD) surface.
   peak_density = apply(Zi, 1, max)
   delta_A_over_A = fcont$kappa / peak_density
   delta_A_over_A[!is.finite(delta_A_over_A) | peak_density <= 0] = NA
-  # At radii far beyond where data constrain the density, this ratio can
-  # blow up; cap the relative uncertainty at 200%.
+  # at radii far beyond where any data actually constrain the density
+  # (typically near xmax, well past r200), peak_density -> 0 and this
+  # ratio blows up (seen in testing: up to ~7000x) -- formally consistent
+  # with "this point is unconstrained" but useless for the M200 error
+  # budget, for the Bayesian likelihood below, or for plotting a band.
+  # Cap the relative uncertainty at 200%.
   delta_A_over_A = pmin(delta_A_over_A, 2)
   delta_A_over_A_filled = delta_A_over_A
   delta_A_over_A_filled[is.na(delta_A_over_A_filled)] = 0  # treat "unknown" as "no widening", not "infinitely uncertain"
@@ -1163,9 +1618,10 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   ArD = fit_inputs_D$Ar
   sigma_A_fit = fit_inputs_D$sigma_A
 
-  # if the caller supplied M200_prior but not R200_prior, anchor
-  # R200_prior to the r200 already in use here rather than silently
-  # ignoring M200_prior for lack of a matching radius.
+  # if the caller supplied M200_prior (e.g. from Tempel et al. 2017) but not
+  # R200_prior, anchor R200_prior to the r200 already in use here (whether
+  # user-supplied or auto-estimated above) rather than silently ignoring
+  # M200_prior for lack of a matching radius.
   if(!is.na(M200_prior) & is.na(R200_prior)){
     R200_prior = r200
     if(verbose) message('R200_prior not supplied; using r200 = ', round(r200,3),
@@ -1180,37 +1636,59 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   conc_fit = nfw_fit[[3]]  # concentration, only non-NA when M200_prior/R200_prior were supplied
   conc_16 = nfw_fit[[4]]   # 68% credible interval, only non-NA for conc_method='bayesian'
   conc_84 = nfw_fit[[5]]
-  # Raw NFW fit parameters (d0, rs) and the Fbeta normalisation `gb`,
-  # exposed so the caller can extrapolate the fitted escape-velocity curve
-  # beyond rlimit -- see nfw_escape_curve() / extend_outliers_nfw() above.
+  # Raw NFW fit parameters (halo_scale_density=d0, halo_srad_used=rs) and
+  # the Fbeta-derived normalisation `gb` used just above, exposed so the
+  # caller can EXTRAPOLATE the fitted escape-velocity curve to radii beyond
+  # rlimit (where caustic_fit/x_range simply don't extend, since that grid
+  # is built only from the trimmed data_set) -- see nfw_escape_curve() and
+  # extend_outliers_nfw() below, added specifically for this purpose.
   nfw_d0 = nfw_fit[[6]]
   nfw_rs = nfw_fit[[7]]
   nfw_gb = gb[1]
 
-  # `member_boundary`: which curve a galaxy's velocity is compared against
-  # to decide membership. 'fit' (default) uses the point-estimate NFW
-  # curve directly. 'upper' uses the upper edge of the delta_A(r)
-  # uncertainty band -- more conservative about flagging outliers, at the
-  # cost of admitting more contamination; a real trade-off, not a strict
-  # improvement.
+  # `member_boundary` (default 'fit', matching this project's and
+  # causticpy's previous/only behaviour): which curve a galaxy's velocity
+  # is compared against to decide membership.
+  #   'fit'   -- the point-estimate NFW curve (caustic_fit) itself. This
+  #     project separately found that vdisp_est comes out systematically
+  #     LOW (~8-11%) against Tempel et al. (2017) sigma_v, and attributed
+  #     it to exactly this: a hard cut at the best-fit curve truncates
+  #     genuine high-velocity members whenever the point estimate happens
+  #     to sit a bit low there, which a boundary with no accounting for
+  #     its own uncertainty cannot avoid.
+  #   'upper' -- the UPPER edge of the delta_A(r) uncertainty band,
+  #     caustic_fit*(1+delta_A/A). More conservative about flagging
+  #     outliers (fewer false positives among genuine members near the
+  #     boundary), at the cost of admitting more contamination (more true
+  #     interlopers slip through as "members") -- a real trade-off, not a
+  #     strict improvement, which is why 'fit' remains the default.
   member_curve = if (member_boundary == 'upper') caustic_fit * (1 + delta_A_over_A_filled) else caustic_fit
   fcomp = approxfun(x_range, member_curve)
   vcompare = fcomp(data_set[,1])
   memflag = ifelse(abs(vcompare) > abs(data_set[,2]), 1, 0)
   
   # `fbr_radial` (opt-in, off by default): use the radially-varying
-  # F_beta(r) form (DG97/D99/Gifford et al. 2013), instead of the constant
-  # `fbr` scalar. Uses conc_default, same reasoning as beta_radial above.
+  # F_beta(r), the NFW-filling-function form from DG97/D99/Gifford et al.
+  # (2013), instead of the constant `fbr` scalar this project calibrated
+  # empirically (fbr~=0.5-0.7 depending on kernel/settings). Uses the same
+  # conc_default as beta_radial above, for the same reason (no fit
+  # concentration is available yet at this stage in the unanchored case).
   fbr_use = if (fbr_radial) fbeta_radial_nfw(x_range, r200, conc_default, gb) else fbr
 
   # mass estimation (see mass_from_Ar() for the DG97-anchoring / fix_r200 /
-  # r=0-handling logic, shared between the density-matched and edge curves)
+  # r=0-handling logic, factored out so it can be reused identically for
+  # both the main density-matched curve and the independent edge curve)
   #
   # `mass_method='bayesian_joint'`: alternative to the density-integral
-  # M200 -- a joint (M200, concentration) Bayesian fit to the observed
-  # A(r) curve, with r200 held as a fixed anchor. Requires M200_prior to
-  # be unset (if M200 is already fixed, use conc_method='bayesian' instead
-  # to fit concentration alone).
+  # M200 above -- a joint (M200, concentration) Bayesian fit to the
+  # observed A(r) curve itself, with r200 (given or auto-estimated) held
+  # as a fixed anchor radius. Requires M200_prior to be UNSET (if M200 is
+  # already fixed, there's nothing left to jointly estimate -- use
+  # conc_method='bayesian' instead, which fits concentration alone).
+  # Validated against 100 real Tempel et al. (2017) clusters: comparable
+  # or slightly better precision than the density-integral estimate (73%
+  # vs 66% within a factor ~1.4 of the true mass), plus well-behaved
+  # concentration credible intervals as a byproduct.
   M200_bayes_16 = M200_bayes_84 = NA
   M200_est = NA
   if (mass_method == 'bayesian_joint' & is.na(M200_prior)) {
@@ -1262,7 +1740,10 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
 
   delta_M_cum = rep(NA, length(x_range))
   if (!is.na(M200_bayes_16) && !is.na(M200_bayes_84)) {
-    # bayesian_joint succeeded: use the credible interval directly.
+    # mass_method='bayesian_joint' succeeded: use the (asymmetric) 68%
+    # credible interval directly as the uncertainty, rather than the
+    # D99/Serra et al. (2011) formula below, which needs a mass PROFILE
+    # (mD$massprofile) that this mode doesn't compute.
     M200_err = mean(c(M200_est - M200_bayes_16, M200_bayes_84 - M200_est))
   } else if (all(is.finite(mD$massprofile))) {
     shell_mass = c(mD$massprofile[1], diff(mD$massprofile))
@@ -1299,9 +1780,14 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   }
 
   Ngal = length(rproj[memflag == 1 & rproj <= r200_est])
-  # biwScale() needs a guard against too few/zero points: for a degenerate
-  # fit that excludes almost everyone as "not a member", the member
-  # selection here can come up empty.
+  # BUG FIX: biwScale() had no guard against too few (or zero) points.
+  # For a handful of difficult clusters (e.g. a degenerate NFW fit that
+  # ends up excluding almost everyone as "not a member"), the member
+  # selection here can come up empty or with a single point -- median()/
+  # mad() then return NA, and biwScale()'s own internal
+  # `if (madx == 0)` check crashes with the uninformative
+  # "missing value where TRUE/FALSE needed" instead of a clear message
+  # pointing at the real cause (too few members found within r200_est).
   if (Ngal >= 2) {
     vdisp_gal = biwScale(vproj[memflag == 1 & rproj <= r200_est])
   } else {
@@ -1310,22 +1796,35 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
                           ' member(s) found within r200_est = ', round(r200_est, 3),
                           ' Mpc (need >= 2) -- likely a degenerate NFW/membership fit for this cluster.')
   }
-  # Standard large-N approximation for the standard error of a scale
-  # estimator, SE(sigma) ~= sigma/sqrt(2(N-1)).
+  # Standard large-N analytic approximation for the standard error of a
+  # scale estimator, SE(sigma) ~= sigma/sqrt(2(N-1)) -- an approximation
+  # (exact for a Gaussian sample standard deviation, used here as a
+  # reasonable order-of-magnitude estimate for the biweight scale too,
+  # since no closed-form SE exists for the biweight estimator itself).
+  # Previously vdisp_gal was reported as a bare point estimate with no
+  # uncertainty at all, unlike M200 and (when fit) concentration.
   vdisp_err = if (Ngal > 1 && !is.na(vdisp_gal)) vdisp_gal / sqrt(2 * (Ngal - 1)) else NA
 
   # R200, Bayesian-flavoured: only available when mass_method='bayesian_joint'
-  # was used. R200 is held FIXED as the fitting anchor throughout that fit
-  # (used to define rs=R200_anchor/c for every trial concentration), so
-  # `r200_est` itself does NOT move with the fit. What CAN be derived,
-  # since M200 has a genuine posterior in this mode: applying the SO-200
-  # definition (M200 = (4/3)*pi*200*rho_crit(z)*R200^3) to the M200
-  # posterior mode and 16th/84th percentiles gives an alternative,
-  # internally-consistent R200 point estimate + credible interval. This is
-  # a DERIVED quantity, not a genuine fit of R200, and generally DIFFERS
-  # from r200_est (the anchor) -- kept as separate fields
-  # (`r200_bayes_est`/`_16`/`_84`) since the rest of the output
-  # (caustic_fit, membership, Ngal, vdisp_est) still uses the anchor.
+  # was used. R200 itself is held FIXED as the fitting anchor throughout
+  # that fit (used to define rs=R200_anchor/c for every trial concentration
+  # in the grid) -- it is never a free parameter there, so `r200_est`
+  # itself does NOT move with the Bayesian fit and stays equal to whatever
+  # anchor was used (given by the caller, or the blind preliminary
+  # estimate). What we CAN derive, since M200 has a genuine posterior in
+  # this mode: applying the standard SO-200 definition,
+  # M200 = (4/3)*pi*200*rho_crit(z)*R200^3, to the M200 posterior mode and
+  # 16th/84th percentiles gives an alternative, internally-consistent R200
+  # point estimate + credible interval. This is a DERIVED quantity, not a
+  # genuine joint fit of R200 itself, and by construction generally
+  # DIFFERS from r200_est (the anchor) -- e.g. on a real CIRS cluster
+  # (Rines & Diaferio 2006, A0085) the anchor gave r200_est=2.032 Mpc,
+  # while this derived estimate landed at a different value nearby. Kept
+  # as separate fields (`r200_bayes_est`/`_16`/`_84`) rather than
+  # overwriting r200_est, since the rest of the output (caustic_fit,
+  # membership, Ngal, vdisp_est) is all still computed using the anchor,
+  # not this value -- replacing r200_est here would make those
+  # inconsistent with each other.
   r200_bayes_est = r200_bayes_16 = r200_bayes_84 = NA
   if (!is.na(M200_bayes_16) && !is.na(M200_bayes_84)) {
     G200 = 6.67430e-11; Msol2kg200 = 1.98847e30; Mpc2m200 = 3.08567758e22
