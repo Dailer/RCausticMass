@@ -10,6 +10,8 @@ The caustic technique is a powerful method to infer cluster mass profiles to clu
 install.packages(c("imager", "magicaxis"))
 ```
 
+`magicaxis` is only needed for the optional diagnostic plot (`plot=TRUE`); everything else runs without it.
+
 ## Basic usage
 
 Run the code, here using the sample data provided with unknown values of R200 and cluster velocity dispersion (blind mode):
@@ -44,6 +46,19 @@ image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[pr
 | `extend_outliers_nfw()` | Extends outlier/member classification to the *full* range of `dproj`, extrapolating the fitted NFW escape-velocity curve beyond the radius `run_caustic()` actually analysed. Also available directly as `caustic_outliers_extended` in `run_caustic()`'s own output. |
 | `shifting_gapper()` | Interloper removal via the shifting-gapper technique (Fadda et al. 1996). |
 
+## Advanced tuning parameters
+
+Beyond `fbr`, a few lower-level parameters of `run_caustic()` were validated against three independent samples (two Tempel et al. 2017 extractions plus CIRS, Rines & Diaferio 2006) and are worth knowing about:
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `blur_gaussian` | `FALSE` | Controls `isoblur()`'s internal filter: `FALSE` uses the Deriche filter, `TRUE` uses Young-van Vliet (closer to a true Gaussian, but validated as never better and sometimes substantially worse — up to ~25-28% more M200 scatter on noisier extractions). |
+| `gradu` | `1.0` | How fast a candidate contour's amplitude is allowed to grow with radius while tracing the escape surface. Inherited unchanged from causticpy at `0.5` originally; found never worse and sometimes clearly better at `1.0`. |
+| `gradd` | `2.0` | Same idea for how fast the amplitude may fall. No detectable effect over the range tested; left at its original value. |
+| `q` | `10` | Compresses the velocity axis relative to radius before the isotropic 2D kernel is applied. **Not recommended to change from a single default** — like `fbr`, its optimum is extraction-geometry-dependent and swings in *opposite* directions between datasets tested (favoring `q≈4-6` for a wide fixed-radius extraction, `q≈10` for a narrow membership-constrained one). Recalibrate jointly with `fbr` if you touch it. |
+
+`neumann` (boundary conditions in `isoblur()`) and the density-grid resolution (`grid_by`, `nlevels`) were also tested and found to have negligible or ambiguous effect — left at their original defaults.
+
 ## Validation
 
 Tested against the Tempel et al. (2017) group catalogue (0.02 < z < 0.1), comparing blind-mode M200 estimates (no external prior) against the catalogue's own masses, for two different candidate-extraction conventions:
@@ -68,6 +83,7 @@ See [docs/validation.md](docs/validation.md) for the full comparison, including 
 
 - **Blind mode is substantially less precise than informed mode.** If you have R200 and velocity dispersion from an external catalogue, use them (`fix_r200=TRUE`) — the difference in accuracy is large, not marginal.
 - **`fbr` (the β-factor used in the mass integral) is not universal.** Its optimal value depends on the extraction geometry (fixed-radius vs. proportional-to-R200, wide vs. narrow velocity window), not just the cluster sample itself. Recalibrate against known masses when possible rather than trusting a single default across very different datasets.
+- **`q` behaves the same way as `fbr`** — extraction-geometry-dependent, with no single default that serves all cases well (see Advanced tuning parameters above).
 - **Convergence depends strongly on richness.** Clusters with fewer than ~15-20 candidate galaxies often can't be fit reliably in blind mode; this is a data limitation, not a bug.
 - **`run_caustic_robust()`'s recovered results can be confidently wrong.** Their own reported uncertainty (`M200_err_frac`) is not a reliable indicator of how far off they may be — treat any result where `rlimit_frac_used` is not `NA` as lower-confidence, regardless of its error bar.
 
