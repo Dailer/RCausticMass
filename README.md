@@ -8,7 +8,6 @@ The caustic technique is a powerful method to infer cluster mass profiles to clu
 
 ```r
 install.packages(c("imager", "magicaxis"))
-source("RCausticMass.R")
 ```
 
 ## Basic usage
@@ -16,6 +15,7 @@ source("RCausticMass.R")
 Run the code, here using the sample data provided with unknown values of R200 and cluster velocity dispersion (blind mode):
 
 ```r
+source("RCausticMass.R")
 data = read.table("sample_data.txt")
 data = subset(data, CID == 1)
 r = run_caustic(data$dproj, data$vlos, data$zclus, r200 = NA, clus_vdisp = NA)
