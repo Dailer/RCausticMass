@@ -3,7 +3,7 @@ message: "If you use this software, please cite it as below."
 title: "RCausticMass: Caustic Mass Estimator for Galaxy Clusters"
 type: software
 authors:
-  - family-names: "Fonticiella Morell"
+  - family-names: "Fontisiella Morell"
     given-names: "Dailer"
     name-particle: ""
 repository-code: "https://github.com/Dailer/RCausticMass"
