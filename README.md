@@ -36,11 +36,19 @@ image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[pr
       ylab = expression(v[proj] ~ (km/s)))
 ```
 
+Setting `plot=TRUE` inside `run_caustic()` itself gives a more complete diagnostic figure -- the escape surface, the fitted NFW curve, its uncertainty band (shaded, from the same per-radius D99/Serra et al. 2011 error estimate used for the M200 error bar), R200, and the member/outlier split:
+
+<p align="center">
+  <img src="docs/images/coma_diagnostic_plot.png" width="70%">
+</p>
+
+*(Coma cluster, blind mode -- see [docs/parameter_calibration.md](docs/parameter_calibration.md) for this and other external validation tests against literature clusters.)*
+
 ## Main functions
 
 | Function | Purpose |
 |---|---|
-| `run_caustic()` | The core estimator: R200, M200, velocity dispersion, membership, and uncertainties from a cluster's projected phase-space (`dproj`, `vlos`). Works blind (no prior) or informed (`fix_r200=TRUE`, given R200/velocity dispersion). |
+| `run_caustic()` | The core estimator: R200, M200, velocity dispersion, membership, and uncertainties from a cluster's projected phase-space (`dproj`, `vlos`). Works blind (no prior) or informed (`fix_r200=TRUE`, given R200/velocity dispersion). With `plot=TRUE`, also shows the fitted NFW escape curve's uncertainty band (D99/Serra et al. 2011 per-radius error, the same one behind the M200 error bar). |
 | `run_caustic_robust()` | Wrapper around `run_caustic()` that retries with a smaller `rlimit` if the normal call fails with `"the contours do not expand to the radial limit"`. Recovered results are less precise on average — see the function's own documentation before trusting them. |
 | `run_caustic_bootstrap()` | Runs `run_caustic()` over many galaxy resamples to obtain an empirical uncertainty estimate (distinct from the analytic D99 error). |
 | `extend_outliers_nfw()` | Extends outlier/member classification to the *full* range of `dproj`, extrapolating the fitted NFW escape-velocity curve beyond the radius `run_caustic()` actually analysed. Also available directly as `caustic_outliers_extended` in `run_caustic()`'s own output. |
