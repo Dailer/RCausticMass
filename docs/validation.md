@@ -42,13 +42,25 @@ R200 is held fixed at Tempel's own catalogue value; only M200 (and concentration
 
 Fixing R200 removes a major source of noise in both cases -- compare against the blind-mode M200 panels above. The constrained extraction still outperforms the unconstrained one even here, though the gap narrows substantially compared to blind mode.
 
+## A third, independent sample: CIRS (Rines & Diaferio 2006)
+
+Tempel above is our own extraction, from a broad group catalogue. CIRS is a genuinely independent sample -- a different survey, different candidate selection, different R200/M200 measurements (both from the caustic technique, but an entirely separate analysis) -- and is used throughout this project's calibration work specifically as a cross-check against overfitting to Tempel's own conventions. `F_β(r)=0.44`, calibrated the same way as the two Tempel extractions above.
+
+| R200, blind (N=67) | M200, blind (N=67) | M200, informed (N=63) |
+|---|---|---|
+| ![R200 blind CIRS](images/fig7_R200_cirs_blind.png) | ![M200 blind CIRS](images/fig8_M200_cirs_blind.png) | ![M200 informed CIRS](images/fig9_M200_cirs_informed.png) |
+
+The same blind-vs-informed pattern holds here as for Tempel: informed mode visibly tightens the scatter around the 1:1 line. CIRS's own precision sits between the two Tempel extractions -- unsurprising, since its candidate-selection convention (fixed radius, similar in spirit to "Unconstrained") is less tightly tied to true membership than "Constrained" is, but the underlying data and target selection differ enough from Tempel that it isn't a direct apples-to-apples comparison of extraction geometry alone.
+
 ## Summary
 
 | Extraction | Mode | N |
 |---|---|---|
-| Constrained | Blind | 250 |
-| Constrained | Informed | 250 |
-| Unconstrained | Blind | 250 |
-| Unconstrained | Informed | 250 |
+| Constrained (Tempel) | Blind | 250 |
+| Constrained (Tempel) | Informed | 250 |
+| Unconstrained (Tempel) | Blind | 250 |
+| Unconstrained (Tempel) | Informed | 250 |
+| CIRS | Blind | 67 |
+| CIRS | Informed | 63 |
 
 **Takeaway**: both the extraction geometry (proportional vs. fixed-radius, membership-constrained vs. fixed velocity window) and the availability of an external R200 prior have a first-order effect on precision -- comparable to or larger than most algorithmic refinements to the fitting method itself. See the main README's "Known limitations" section, and [docs/parameter_calibration.md](parameter_calibration.md) for the detailed calibration process behind the current defaults.
