@@ -420,7 +420,7 @@ findcontours = function(Zi, ri, vi, r200, vvar, rimax = 4, vlimit = 4000, nlevel
 
   # log-spaced levels (see note above), falling back to contourLines()'s
   # own default spacing if Zi has no positive values (shouldn't normally
-  # happen, but guards against a degenerate all-zero density map)
+  # happen, but guards against a degenerate all-zero density map).
   zpos = Zi[Zi > 0]
   if (length(zpos) > 0) {
     level_lo = min(zpos) / 5
@@ -1029,6 +1029,8 @@ run_caustic_bootstrap = function(rproj, vproj, clus_z, n_boot = 50, seed = NULL,
 run_caustic_robust = function(rproj, vproj, clus_z, ...,
                                search_rlimit = TRUE,
                                rlimit_search_fracs = c(0.80, 0.70, 0.60, 0.50, 0.40, 0.30),
+                               search_min_n = TRUE,
+                               min_n_search_values = c(12, 10, 8, 6),
                                verbose = TRUE){
   xmax_full = max(rproj)
   extra_args = list(...)
@@ -1043,10 +1045,44 @@ run_caustic_robust = function(rproj, vproj, clus_z, ...,
                         error = function(e) conditionMessage(e))
   if (!is.character(first_try)) {
     first_try$rlimit_frac_used = NA  # succeeded normally, no search needed
+    first_try$min_n_used = NA
     return(first_try)
   }
-  if (!search_rlimit || !grepl('do not expand', first_try, fixed = TRUE)) {
-    stop(first_try)  # not the specific, recognised failure mode this wrapper targets, or search disabled
+
+  is_rlimit_failure = grepl('do not expand', first_try, fixed = TRUE)
+  is_min_n_failure = grepl('too few galaxies for a blind preliminary R200 estimate', first_try, fixed = TRUE)
+
+  if (is_min_n_failure && search_min_n) {
+    if (verbose) message('run_caustic_robust(): normal call failed ("', first_try,
+                          '"); searching for a smaller min_n...')
+    search_args = extra_args
+    search_args$verbose = FALSE
+    for (mn in min_n_search_values) {
+      args2 = search_args
+      args2$min_n = mn
+      r2 = tryCatch(do.call(run_caustic, c(list(rproj = rproj, vproj = vproj, clus_z = clus_z), args2)),
+                    error = function(e) NULL)
+      if (!is.null(r2)) {
+        if (verbose) {
+          message('run_caustic_robust(): recovered using min_n = ', mn, ' -- treat this ',
+                  'result as lower-confidence regardless of its own M200_err_frac: with so ',
+                  'few candidates, the preliminary R200/vdisp used to seed the fit is itself ',
+                  'noisy, and that error bar does not account for this.')
+          args2$verbose = TRUE
+          r2 = tryCatch(do.call(run_caustic, c(list(rproj = rproj, vproj = vproj, clus_z = clus_z), args2)),
+                        error = function(e) r2)
+        }
+        r2$rlimit_frac_used = NA
+        r2$min_n_used = mn
+        return(r2)
+      }
+    }
+    stop('run_caustic_robust(): could not converge even after searching min_n values ',
+         paste(min_n_search_values, collapse = ', '), ' (', first_try, ')')
+  }
+
+  if (!is_rlimit_failure || !search_rlimit) {
+    stop(first_try)  # not a failure mode this wrapper recognises, or the relevant search is disabled
   }
   if (verbose) message('run_caustic_robust(): normal call failed ("', first_try,
                         '"); searching for a smaller rlimit...')
@@ -1078,6 +1114,7 @@ run_caustic_robust = function(rproj, vproj, clus_z, ...,
                       error = function(e) r2)
       }
       r2$rlimit_frac_used = frac
+      r2$min_n_used = NA
       return(r2)
     }
   }
@@ -1224,7 +1261,7 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
                      # substantially better on the noisier extraction (M200 scatter reduced
                      # ~4%), at gradu=1.0. gradd showed no detectable effect over the range
                      # tested and is left at its original value.
-                     gradu = 1.0, gradd = 2.0, grid_by = 0.05, nlevels = 200,
+                     gradu = 1.0, gradd = 2.0, grid_by = 0.05, nlevels = 200, min_n = 15,
                      c_min = 1, c_max = 15, beta_radial = F, fbr_radial = F, conc_default = 5,
                      compute_edge = F, member_boundary = c('fit', 'upper'),
                      conc_method = c('bounded', 'bayesian'), c_prior_scatter_dex = 0.1, little_h = 0.7,
@@ -1340,7 +1377,7 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
   } else if (adaptive_vlimit && is.na(vlimit) && is.na(clus_vdisp)) {
     rmax0 = max(rproj)
     rl0 = min(rmax0, 3)
-    vdisp0 = gapper_cleaned_vdisp(rproj, vproj, rl0)
+    vdisp0 = gapper_cleaned_vdisp(rproj, vproj, rl0, min_n = min_n)
     if (is.na(vdisp0)) vdisp0 = biwScale(vproj[rproj < rl0])  # too few points to clean; never give up entirely here
     vlimit = adaptive_vlimit_mult * vdisp0
     if (verbose) message('adaptive_vlimit: derived vlimit = ', round(vlimit, 1),
@@ -1423,7 +1460,7 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
     rl = min(rmax, 3)
     r200_prelim_prev = NA
     for (iter_prelim in 1:6) {
-      vdisp_prelim = gapper_cleaned_vdisp(data_set[,1], data_set[,2], rl)
+      vdisp_prelim = gapper_cleaned_vdisp(data_set[,1], data_set[,2], rl, min_n = min_n)
       if (is.na(vdisp_prelim)) break  # too few galaxies within rl to even attempt an estimate
       r200_new = sqrt(3) * vdisp_prelim / (10 * Hz)
       if (r200_new > rmax) r200_new = rmax
@@ -1435,6 +1472,21 @@ run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = 
       rl = max(r200_new, 0.15)  # narrow to exactly R200_prelim next iteration; floor avoids collapse
     }
     r200 = r200_prelim_prev
+    # BUG FIX: previously, if r200 was still NA here (starting radial window
+    # never had min_n galaxies, even on the first iteration), the NA simply
+    # propagated silently into gaussian_kernel() several steps downstream,
+    # which failed there with an opaque "NA/NaN argument" error carrying no
+    # hint of the real cause. run_caustic_robust() has no way to recognise
+    # or recover from that. Now this specific, common failure mode (too few
+    # candidates for a blind preliminary R200 estimate) gets its own clear,
+    # greppable message immediately, the same way the radial-contour failure
+    # already does -- so a wrapper can specifically detect and retry it.
+    if (is.na(r200)) {
+      stop('run_caustic(): too few galaxies for a blind preliminary R200 estimate ',
+           '(fewer than min_n = ', min_n, ' within the starting radial window). ',
+           'Provide r200 directly (informed mode), or see run_caustic_robust() ',
+           'for automatic retry with a lower min_n.')
+    }
   }
   
   # reduce sample again forcing data to be within 3*r200
