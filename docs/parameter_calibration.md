@@ -192,6 +192,48 @@ Blind-mode M200 errors (-25%, +18%) are broadly consistent with what Tempel/CIRS
 
 ---
 
+## Convergence: recovering clusters with too few galaxies
+
+The single most common cause of `run_caustic()` failing to converge in blind mode turned out **not** to be the radial-contour issue `run_caustic_robust()` already handled, but a distinct, more common one: too few galaxies within the starting radial window to even attempt a preliminary R200 estimate. Previously this failed silently -- the resulting `NA` propagated several steps downstream into `gaussian_kernel()`, which crashed with an opaque `"NA/NaN argument"` error carrying no hint of the real cause, and `run_caustic_robust()` had no way to recognise or retry it.
+
+Fixed in two parts: (1) `run_caustic()` now stops immediately with a specific, greppable error (`"too few galaxies for a blind preliminary R200 estimate"`) as soon as this happens, instead of letting the `NA` propagate; (2) `min_n` (the galaxy-count threshold, default 15) is now an exposed parameter, and `run_caustic_robust()` recognises this failure mode and retries automatically with a smaller `min_n` (12, 10, 8, 6 in turn), the same way it already retried `rlimit`. The recovered result carries `min_n_used` (analogous to the existing `rlimit_frac_used`) and the same "treat as lower-confidence" caveat.
+
+**Tested against the full Tempel et al. (2017) sample, both extractions combined (n=200 clusters)**:
+
+| | Convergence |
+|---|---|
+| `run_caustic()` alone | 95/200 (47.5%) |
+| `run_caustic_robust()`, with this fix | 130/200 (65.0%) |
+
+Of the 105 clusters that failed to converge with a plain `run_caustic()` call, 61 (58%) failed specifically due to this too-few-galaxies issue -- more common than the radial-contour failure (33 clusters, 31%) that `run_caustic_robust()` already handled before this fix. Of those 61, the `min_n` retry recovered 24 (39%). Note that not every `min_n`-type failure is recoverable this way: for genuinely tiny samples (single digits after the initial radius/velocity cuts), lowering `min_n` can let the preliminary estimate itself succeed while a *different* failure still occurs further downstream (e.g. `findcontours()` itself needs enough points to trace a contour) -- there is a hard floor below which no amount of threshold-lowering helps.
+
+### Recovered results are measurably less accurate, not just lower-confidence in principle
+
+Tested on the Tempel extended sample (unconstrained extraction, n=100): comparing the 60 clusters that converged with a plain `run_caustic()` call against the 10 additional ones recovered by `run_caustic_robust()` (8 via `rlimit`, 2 via `min_n`):
+
+| | n | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+|---|---|---|---|---|---|
+| Converged normally | 60 | -1.9% | 0.292 | -0.001 | 0.369 |
+| **Recovered by `run_caustic_robust()`** | 10 | **+8.5%** | **0.375** | **+0.130** | **0.402** |
+
+Worse in every metric -- confirming the function's own "treat as lower-confidence" warning with a concrete number, not just as a general caution. n=10 is small, so treat the exact magnitude loosely, but the direction is consistent with everything else found here.
+
+### Richness threshold: N200 < 6 is where things break down
+
+Using `N200` (galaxies inside the *estimated* R200 -- computed from `caustic_outliers` and `r200_est`, not returned directly by `run_caustic()` but easy to derive) as the richness measure, tested across the full Tempel sample (both extractions, n=130 converged, `run_caustic_robust()` included):
+
+| N200 | n | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+|---|---|---|---|---|---|
+| **0-5** | 16 | **-29.9%** | 0.229 | **-44.3%** | **0.601** |
+| 6-10 | 69 | -7.3% | 0.302 | -7.7% | 0.363 |
+| 11-20 | 28 | -14.8% | 0.158 | -18.2% | 0.216 |
+| 21-40 | 13 | -8.9% | 0.256 | -9.4% | 0.293 |
+| >40 | 4 | -12.9% | 0.112 | -15.4% | 0.153 |
+
+There's a clear break at `N200 = 6`: below it, both bias and scatter are substantially worse than any richer bin (M200 scatter in particular is roughly double the next-worst group). Above it, precision settles into a broadly stable range without a strong further trend -- crossing this floor matters much more than how far above it a cluster sits. `N_total` (input candidate count, before fitting) was tested too but showed a much less clean pattern, likely confounded with extraction geometry (very high-N_total clusters are almost all from the wider unconstrained extraction, which has its own, separate scatter penalty unrelated to richness); `N200` is the more direct and more useful diagnostic since it's a property of the fit itself. **Practical takeaway**: treat any `run_caustic()` result with `N200 < 6` as low-confidence regardless of convergence or its own reported error bar, the same way results recovered by `run_caustic_robust()` already are.
+
+---
+
 ## Bug fixes found during calibration (implemented, not configurable)
 
 These aren't tunable parameters, but are worth listing since they were found *during* this calibration process and materially affect how trustworthy earlier or third-party results might be:
