@@ -108,6 +108,7 @@ See [docs/validation.md](docs/validation.md) for the full comparison, including 
 - **`q` behaves the same way as `fbr`** — extraction-geometry-dependent, with no single default that serves all cases well (see Advanced tuning parameters above).
 - **Convergence depends strongly on richness.** Clusters with fewer than ~15-20 candidate galaxies often can't be fit reliably in blind mode; this is a data limitation, not a bug.
 - **`run_caustic_robust()`'s recovered results can be confidently wrong.** Their own reported uncertainty (`M200_err_frac`) is not a reliable indicator of how far off they may be — treat any result where `rlimit_frac_used` is not `NA` as lower-confidence, regardless of its error bar.
+- **The caustic technique itself does not model Fingers-of-God distortion** (the velocity elongation of a cluster's core caused by peculiar-velocity dispersion when viewed nearly face-on). This is a structural limitation of the method (Serra & Diaferio 2013), not something any parameter here can fix -- it can cause genuine core members to be missed regardless of tuning.
 
 ## License
 
