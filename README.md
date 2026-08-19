@@ -59,14 +59,16 @@ Beyond `fbr`, a few lower-level parameters of `run_caustic()` were validated aga
 
 `neumann` (boundary conditions in `isoblur()`) and the density-grid resolution (`grid_by`, `nlevels`) were also tested and found to have negligible or ambiguous effect — left at their original defaults.
 
+For the full calibration process (all sweeps, what was tried and didn't work, and the raw numbers behind these choices), see [docs/parameter_calibration.md](docs/parameter_calibration.md).
+
 ## Validation
 
-Tested against the Tempel et al. (2017) group catalogue (0.02 < z < 0.1), comparing blind-mode M200 estimates (no external prior) against the catalogue's own masses, for two different candidate-extraction conventions:
+Tested against the Tempel et al. (2017) group catalogue (0.02 < z < 0.1, 2139 groups), comparing blind-mode M200 estimates (no external prior) against the catalogue's own masses, for two different candidate-extraction conventions:
 
 | | Extraction | N clusters | F_β(r) |
 |---|---|---|---|
-| **Constrained** | 3×R200, velocity window constrained by Tempel's own confirmed members | 713 | 0.72 |
-| **Unconstrained** | Fixed 10 Mpc radius, ±4000 km/s velocity window | 1485 | 0.50 |
+| **Constrained** | 3×R200, velocity window constrained by Tempel's own confirmed members | 250 | 0.72 |
+| **Unconstrained** | Fixed 10 Mpc radius, ±4000 km/s velocity window | 250 | 0.50 |
 
 <p align="center">
   <img src="docs/images/M200_blind_original.png" width="47%">
