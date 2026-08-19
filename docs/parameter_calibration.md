@@ -43,6 +43,8 @@ Note the zero-bias crossing for M200 sits slightly above the values chosen for R
 
 Behaves like `fbr` -- extraction-dependent, and here the disagreement between samples is *directional*, not just a matter of degree.
 
+**A note on where `q=25`/`q=35` comes from**: the literature convention citing those specific values (e.g. GalWeight, Pisani 1993/1996) refers to the two-dimensional adaptive kernel method (2DAKM) -- i.e. `kernel="adaptive"` in this code, not the fixed-bandwidth Gaussian kernel used as the default here. The sweep below was run with `kernel="gaussian"` (this project's default), so it is not a direct test of the literature's own recommended value -- it may partly explain why no single q worked well across extractions, if the "right" q genuinely differs by kernel type. Not re-tested with `kernel="adaptive"` given that kernel's own lower precision ceiling (see below).
+
 **Unconstrained** (fbr=0.50 fixed) -- prefers **low** q:
 | q | n | R200 sd | M200 sd |
 |---|---|---|---|
@@ -177,18 +179,20 @@ A held-out validation (calibrating `fbr` on one random half of the Constrained s
 
 ## External validation: literature clusters with independently published R200/M200
 
-All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against two well-studied clusters with R200/M200 published from the same caustic technique (Sohn et al. 2017), not from Tempel/CIRS:
+All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against two well-studied clusters with R200/M200 published from the same caustic technique (Sohn et al. 2017), not from Tempel/CIRS. Redshifts used (z=0.0235 for Coma, z=0.0784 for A2029) are the exact values from Sohn et al.'s own Table 1:
 
 | Cluster | N candidates | R200 real | R200 est. (blind) | M200 real | M200 est. (blind) | M200 est. (informed) |
 |---|---|---|---|---|---|---|
-| Coma (A1656) | 1743 | 2.23 Mpc | 2.03 Mpc (-9%) | 1.29e15 M☉ | 9.68e14 M☉ (-25%) | 1.32e15 M☉ (**+2%**) |
-| Abell 2029 | 627 | 1.97 Mpc | 2.09 Mpc (+6%) | 0.94e15 M☉ | 1.11e15 M☉ (+18%) | 1.65e15 M☉ (**+75%**) |
+| Coma (A1656) | 1743 | 2.23 Mpc | 2.03 Mpc (-9%) | 1.29e15 M☉ | 9.70e14 M☉ (-25%) | 1.32e15 M☉ (**+2%**) |
+| Abell 2029 | 627 | 1.97 Mpc | 2.09 Mpc (+6%) | 0.94e15 M☉ | 1.12e15 M☉ (+18%) | 1.65e15 M☉ (**+75%**) |
 
 Blind-mode M200 errors (-25%, +18%) are broadly consistent with what Tempel/CIRS calibration would predict for this richness. The informed-mode result is a useful caution, though: fixing R200/velocity dispersion to their real values **helped Coma a lot** (error dropped to +2%) but **hurt Abell 2029 badly** (error grew to +75%, exceeding even the method's own wide reported uncertainty of 45.5%). A2029 has a known X-ray "sloshing" structure indicating it isn't fully dynamically relaxed, which may explain why fixing R200 didn't help the NFW fit find a better-behaved solution here. Informed mode remains better *on average* (as the large-sample Tempel/CIRS comparisons show clearly), but this is a concrete reminder that it is not a strict, guaranteed improvement for every individual cluster.
 
+**A different kind of validation we haven't done**: Sohn et al. (2017) and related papers validate the caustic technique's *membership* completeness (not just R200/M200 accuracy) using Serra & Diaferio (2013) -- N-body mock catalogs with known true membership, recovering ~95% of true members within 3R200 with ~8% interloper contamination (better still within R200 itself: ~96%/~2%). All of our own validation compares against measured real-cluster values (which carry their own uncertainty), never against a simulation with exactly-known ground truth membership. We have not attempted an equivalent mock-catalog test.
+
 ---
 
-
+## Bug fixes found during calibration (implemented, not configurable)
 
 These aren't tunable parameters, but are worth listing since they were found *during* this calibration process and materially affect how trustworthy earlier or third-party results might be:
 
