@@ -20,7 +20,7 @@ No single value works across extractions -- this was the first and most consiste
 |---|---|---|
 | 0.60 | -0.083 | 0.201 |
 | 0.68 | -0.029 | 0.195 |
-| **0.72** | **-0.004** | **0.191** |a
+| **0.72** | **-0.004** | **0.191** |
 | 0.75 | +0.015 | 0.188 |
 | 0.80 | +0.044 | 0.184 |
 
@@ -192,16 +192,116 @@ A held-out validation (calibrating `fbr` on one random half of the Constrained s
 
 ## External validation: literature clusters with independently published R200/M200
 
-All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against two well-studied clusters with R200/M200 published from the same caustic technique (Sohn et al. 2017), not from Tempel/CIRS. Redshifts used (z=0.0235 for Coma, z=0.0784 for A2029) are the exact values from Sohn et al.'s own Table 1:
+All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against well-studied clusters with R200/M200 published independently (not from Tempel/CIRS), using several different techniques for comparison:
 
-| Cluster | N candidates | R200 real | R200 est. (blind) | M200 real | M200 est. (blind) | M200 est. (informed) |
-|---|---|---|---|---|---|---|
-| Coma (A1656) | 1743 | 2.23 Mpc | 2.03 Mpc (-9%) | 1.29e15 M☉ | 9.70e14 M☉ (-25%) | 1.32e15 M☉ (**+2%**) |
-| Abell 2029 | 627 | 1.97 Mpc | 2.09 Mpc (+6%) | 0.94e15 M☉ | 1.12e15 M☉ (+18%) | 1.65e15 M☉ (**+75%**) |
+| Cluster | N candidates | Reference technique | M200 real | M200 est. (blind) | M200 est. (informed) |
+|---|---|---|---|---|---|
+| Coma (A1656) | 1743 | Caustic (Sohn et al. 2017) | 1.29e15 M☉ | 9.70e14 M☉ (-25%) | 1.32e15 M☉ (**+2%**) |
+| Abell 2029 | 627 | Caustic (Sohn et al. 2017) | 0.94e15 M☉ | 1.11e15 M☉ (+18%) | 1.65e15 M☉ (**+75%**) |
+| Abell 2199 | 923 | Caustic (CIRS, same technique) | 3.41e14 M☉ | 4.08e14 M☉ (+20%) | -- |
+| Abell 1795 | 890 | X-ray (Vikhlinin et al. 2006) | 6.03e14 M☉ | 5.47e14 M☉ (-9%) | -- |
+| Abell 85 | 346 | Weak lensing, 2-halo fit (2025) | 4.14e14 M☉ (sum of both halos) | 6.56e14 M☉ (+58%) | -- |
+| Abell 119 | 427 | Dynamical, substructure removed (Way et al. 1997) | ~3.05e14 M☉ | 4.49e14 M☉ (+47%) | -- |
 
-Blind-mode M200 errors (-25%, +18%) are broadly consistent with what Tempel/CIRS calibration would predict for this richness. The informed-mode result is a useful caution, though: fixing R200/velocity dispersion to their real values **helped Coma a lot** (error dropped to +2%) but **hurt Abell 2029 badly** (error grew to +75%, exceeding even the method's own wide reported uncertainty of 45.5%). A2029 has a known X-ray "sloshing" structure indicating it isn't fully dynamically relaxed, which may explain why fixing R200 didn't help the NFW fit find a better-behaved solution here. Informed mode remains better *on average* (as the large-sample Tempel/CIRS comparisons show clearly), but this is a concrete reminder that it is not a strict, guaranteed improvement for every individual cluster.
+Redshifts used for Coma/A2029 (z=0.0235 / z=0.0784) are the exact values from Sohn et al.'s own Table 1.
+
+Blind-mode M200 errors for Coma/A2029/A2199/A1795 (-25%, +18%, +20%, -9%) are broadly consistent with what Tempel/CIRS calibration would predict for this richness. The informed-mode result for Coma/A2029 is a useful caution, though: fixing R200/velocity dispersion to their real values **helped Coma a lot** (error dropped to +2%) but **hurt Abell 2029 badly** (error grew to +75%, exceeding even the method's own wide reported uncertainty of 45.5%). A2029 has a known X-ray "sloshing" structure indicating it isn't fully dynamically relaxed, which may explain why fixing R200 didn't help the NFW fit find a better-behaved solution here. Informed mode remains better *on average* (as the large-sample Tempel/CIRS comparisons show clearly), but this is a concrete reminder that it is not a strict, guaranteed improvement for every individual cluster.
+
+**A85 and A119 overestimate mass for a specific, understood reason**: both are known to have substructure the comparison reference explicitly excluded or separated (A85: an active 2:1-mass-ratio merger, compared against the sum of two independently-fit weak-lensing halos; A119: a literature dynamical mass computed "after elimination of subgroups", with the paper itself noting probable line-of-sight substructure). `run_caustic()` treats the whole phase-space as one system and has no way to separate substructure -- consistent with the systematic overestimation found for merging/unrelaxed clusters elsewhere in this document (see `mirror` below).
 
 **A different kind of validation we haven't done**: Sohn et al. (2017) and related papers validate the caustic technique's *membership* completeness (not just R200/M200 accuracy) using Serra & Diaferio (2013) -- N-body mock catalogs with known true membership, recovering ~95% of true members within 3R200 with ~8% interloper contamination (better still within R200 itself: ~96%/~2%). All of our own validation compares against measured real-cluster values (which carry their own uncertainty), never against a simulation with exactly-known ground truth membership. We have not attempted an equivalent mock-catalog test.
+
+---
+
+## Predicting dynamical state from the data itself: substructure tests
+
+*Note: the sections below (through "Edge-detection cross-check") describe several parameters (`combine_branches`, `fit_r_upper_mult`, `fit_r_lower_div`, `blind_refit`, `mass_curve`, `mass_smooth_spar`, `mass_r_min`, `level_spacing`) that were implemented specifically to run these tests and then removed from `RCausticMass.R` afterward, since none improved on the defaults -- they will not be found in the current file. `compute_edge` is the one exception: it's an original, still-present feature.*
+
+
+
+Given the `mirror` finding above (relaxed vs. unrelaxed clusters need opposite settings), an obvious next question is whether dynamical state can be predicted from the candidate data itself, rather than requiring an external literature classification. Tested on the same CIRS relaxed/unrelaxed split (6 relaxed, 12 unrelaxed clusters with independent literature classifications agreeing across multiple papers).
+
+**Simple univariate tests on the member velocity distribution (Anderson-Darling normality, skewness, a v-vs-(-v) Kolmogorov-Smirnov symmetry test) did not work** -- tested twice, once using cluster membership derived from a `mirror=TRUE` run (circular, since that membership definition already assumes symmetry) and once using a blind, symmetry-agnostic window-narrowing method to avoid that circularity. Both times the direction was mostly *opposite* to what was expected (relaxed clusters showing more apparent asymmetry than unrelaxed ones by these metrics), not just noisy. Likely explanation: the literature relaxed/unrelaxed classification comes from diagnostics unrelated to line-of-sight velocity symmetry specifically (X-ray morphology, 2D positional substructure statistics), so there's no strong reason these 1D velocity-only tests should track it.
+
+**The Dressler & Shectman (1988) test (implemented in `ds_test.R`, included alongside this project) worked well on CIRS**: unlike the univariate tests, it combines projected *position* with velocity (comparing each galaxy's local neighbourhood mean velocity/dispersion against the cluster-wide values), which is the standard, literature-validated approach for exactly this purpose. Median p-value 0.202 for relaxed clusters vs. 0.000 for unrelaxed ones -- a real, promising separation (though not perfect: one relaxed cluster, A2244, showed strong spurious substructure evidence; 7 of 11 unrelaxed clusters were correctly flagged at p<0.1).
+
+**But using it as an automatic decision rule for `mirror` on a noisier extraction failed badly.** Tested end-to-end on 39 real Tempel et al. (2017) clusters (unconstrained extraction): for each cluster, the DS test decided `mirror=TRUE`/`FALSE`, then `run_caustic()` ran with that choice, compared against a fixed `mirror=TRUE` baseline.
+
+| | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+|---|---|---|---|---|
+| Baseline (`mirror=TRUE` always) | -9.7% | 0.269 | -0.105 | 0.356 |
+| DS-adaptive choice | -16.7% | 0.325 | -0.217 | 0.656 |
+
+Worse in every metric. Specifically for the 18 clusters where the DS test picked `mirror=FALSE`: had they used `mirror=TRUE` instead, R200 sesgo would have been -2.8% (sd=0.228); with the DS-chosen `mirror=FALSE` it was -32.3% (sd=0.258) -- a clear wrong call, not a marginal one. Likely explanation: DS was validated on CIRS, a curated sample with good per-cluster spectroscopic coverage; on Tempel's wide, contamination-heavy "unconstrained" extraction, a significant DS detection more often reflects field interlopers than genuine merger substructure, so it doesn't carry the same meaning it did on the cleaner sample it was validated against.
+
+**Takeaway**: the DS test is a useful *manual* diagnostic on a reasonably clean candidate sample (which is what it was validated for in the literature), not a plug-in automatic classifier for noisy, wide-window extractions.
+
+---
+
+## Combining the upper/lower velocity branches: `combine_branches`
+
+When `mirror=FALSE` allows the density map to be genuinely asymmetric, `findcontours()` has to decide how to combine the separately-traced positive-velocity and negative-velocity branches into one final amplitude curve at each radius. `combine_branches='min'` (default, matches causticpy) takes the smaller of the two magnitudes at each radius. Two alternatives were tested on the 11-15 worst-performing Tempel et al. (2017) clusters found under the default `mirror=TRUE` configuration, re-run with `mirror=FALSE`:
+
+- **`'mean'`** (point-by-point average instead of minimum): worse on both R200 and M200 medians (dR 0.233→0.274, dM 0.315→0.387) -- one specific cluster degraded sharply (R200 error 0.006→0.426) where a noisier branch dragged the average away from an otherwise well-behaved fit. `min`'s conservatism (never let the amplitude leak through a gap on whichever side extends further) is doing real work, not just following convention.
+- **`'best_nfw'`** (fit each whole branch to a simple NFW shape independently, keep whichever fits better): essentially indistinguishable from `min` in aggregate (identical median errors) -- in most individual cases it picks the same branch `min` effectively favours anyway, with one case notably worse (a branch that fit the NFW *shape* better was not the more *accurate* one, likely because the true curve there isn't a clean single NFW form).
+
+Neither improves on `min`; kept as options for further experimentation, not as better defaults.
+
+---
+
+## The mass integral doesn't use the NFW-fit curve -- a structural finding, not a bug
+
+Investigated while testing whether narrowing/widening the NFW-fit radial range (`fitting_radii`, normally `[R200/3, R200]`) affects M200/R200 accuracy. It doesn't, for a specific and important structural reason: under the default `mass_method='integral'`, `mass_from_Ar()` integrates `Ar_finalD` -- the raw contour curve exactly as `findcontours()` selected it -- directly over the *entire* radial grid, not the NFW-fit curve (`caustic_fit`) and not restricted to `fitting_radii` at all. The NFW fit (and therefore `fitting_radii`, `fit_r_upper_mult`, `fit_r_lower_div`) only affects membership classification (`memflag`) and the fit concentration (when a mass prior is supplied) -- never the R200/M200 numbers themselves in this mode.
+
+This was confirmed exhaustively: extending `fit_r_upper_mult` from 1.0 to 2.0 produced *bit-for-bit identical* `log_M200_est` on real Tempel clusters, not just similar values. A `blind_refit=TRUE` option was added (refits once more using the actual `r200_est` from the first pass, rather than the necessarily-approximate preliminary R200, to fix the circularity that made this untestable in blind mode at all) -- it made no difference either, for the same underlying reason.
+
+**Where `fitting_radii` genuinely does matter**: `mass_method='bayesian_joint'`, which fits `rii`/`ArD` directly for a joint (M200, concentration) estimate. Tested there (60 real Tempel clusters): extending `fit_r_upper_mult` made things *worse*, monotonically --
+
+| fit_r_upper_mult | M200 sesgo (dex) | M200 sd |
+|---|---|---|
+| 1.0 (default) | +0.202 | 0.381 |
+| 1.1 | +0.210 | 0.383 |
+| 1.5 | +0.256 | 0.423 |
+| 2.0 | +0.248 | 0.433 |
+
+So the answer to "does widening/narrowing the fit range help" is no either way: irrelevant under the default method, mildly harmful under `bayesian_joint`.
+
+---
+
+## What curve to integrate for mass: raw contour vs. NFW fit vs. smoothed
+
+Given the above, a genuinely different question is whether integrating something *other than* the raw `Ar_finalD` curve -- which can be noisy, especially for poorly-sampled clusters -- would help, since (per the previous section) `mass_method='integral'` never gets that option by default. Added `mass_curve` (`'raw'` default, `'nfw_fit'`, `'smooth'`) to test this directly. Tested on 95 real Tempel clusters (both extractions):
+
+| `mass_curve` | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+|---|---|---|---|---|
+| `raw` (default) | -1.8% | 0.255 | -0.000 | 0.332 |
+| `nfw_fit` (integrate `caustic_fit` instead) | +4.5% | 0.303 | +0.087 | 0.322 |
+| `smooth` (`smooth.spline()` on `Ar_finalD`, auto spar) | -1.8% | 0.255 | -0.000 | 0.332 (**identical to raw** -- GCV picked ~zero smoothing) |
+| `smooth`, `mass_smooth_spar=0.9` (forced heavy smoothing) | -2.9% | 0.251 | -0.011 | 0.313 |
+
+`nfw_fit` is a clear loser (worse bias in both R200 and M200, no compensating scatter win). `smooth` with automatic smoothing-parameter selection changes nothing at all -- `smooth.spline()`'s GCV criterion found no excess roughness worth penalizing in these curves. Forcing heavy smoothing (`spar=0.9`) gives a small, genuine improvement in scatter (M200 sd 0.332→0.313, ~6%) at a small bias cost -- real but modest, not worth changing the default over on its own.
+
+**`mass_r_min` (zero out the integrand below a radius, to test whether the innermost, most mirror/grid-exposed radii add noise rather than signal)**: no improvement at `r_min=0.05` Mpc (bias got slightly worse, scatter barely moved), and `r_min=0.1` Mpc **broke the fit entirely for nearly every cluster** ("need at least two non-NA values to interpolate" -- too little of the profile survives to locate where it crosses 200×critical density for many clusters, especially smaller ones). No usable middle ground was found between "no effect" and "breaks".
+
+---
+
+## An unresolved observation: some escape curves fall near the cluster centre
+
+While investigating the above, `caustic_profile` (`Ar_finalD`) was found to *decline* monotonically from a near-central peak (~0.1-0.15 Mpc) all the way out to at least R200/2, in about 7% of real Tempel clusters (4 of 60 checked) -- the opposite of the more typical rise-then-fall shape. Initial hypothesis (that this happens specifically when the contour-selection step, which matches a single summary statistic `tot_avg` against `4×σ²`, can't find any good match among the few candidate contours available) did not hold up under a larger check: the correlation between match quality and this "falling" shape was not statistically significant (Wilcoxon p=0.94) across the full 60-cluster sample -- some perfectly normal-shaped clusters had far *worse* matches (up to 3114% off target) than any of the falling cases. The falling clusters were also not particularly poor in candidate count (167-693 candidates). **No confirmed explanation currently exists for this pattern.** Averaging the main curve with the independent edge-detection curve (`Ar_finalE`, see below) does not fix or explain it either. Left as an open item; revisit if a better-motivated hypothesis emerges (e.g. inspecting the 2D density map shape directly for these specific clusters, rather than only the 1D extracted curve).
+
+---
+
+## Edge-detection cross-check (`compute_edge`): doesn't help, including when averaged
+
+`compute_edge=TRUE` computes a second, independent amplitude curve (`Ar_finalE`) from the empirical extremes of raw galaxy velocities per radial bin, rather than the phase-space density map `Ar_finalD` is drawn from. As already noted in the code's own documentation: alone, it's less precise than the main curve (77% vs. 90% of 100 real Tempel clusters within a factor ~2 of the true mass). Re-tested here specifically for whether *averaging* the two helps, two ways, on 60 real Tempel clusters:
+
+| | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+|---|---|---|---|---|
+| Main curve only | -1.9% | 0.292 | -0.001 | 0.369 |
+| Average of final R200/M200 results | -7.0% | 0.301 | -0.073 | 0.386 |
+| Average of the two curves, then integrate | -6.9% | 0.303 | -0.073 | 0.385 |
+
+Both averaging approaches give essentially the same (worse) answer -- makes sense, since integration is close to linear in the curve. Confirms the main curve alone remains the best available choice; the two curves are not independent enough of each other (both drawn from the same limited set of candidate contours) for averaging to cancel out noise the way it would for two genuinely independent estimates.
 
 ---
 
