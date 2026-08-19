@@ -175,7 +175,20 @@ A held-out validation (calibrating `fbr` on one random half of the Constrained s
 
 ---
 
-## Bug fixes found during calibration (implemented, not configurable)
+## External validation: literature clusters with independently published R200/M200
+
+All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against two well-studied clusters with R200/M200 published from the same caustic technique (Sohn et al. 2017), not from Tempel/CIRS:
+
+| Cluster | N candidates | R200 real | R200 est. (blind) | M200 real | M200 est. (blind) | M200 est. (informed) |
+|---|---|---|---|---|---|---|
+| Coma (A1656) | 1743 | 2.23 Mpc | 2.03 Mpc (-9%) | 1.29e15 M☉ | 9.68e14 M☉ (-25%) | 1.32e15 M☉ (**+2%**) |
+| Abell 2029 | 627 | 1.97 Mpc | 2.09 Mpc (+6%) | 0.94e15 M☉ | 1.11e15 M☉ (+18%) | 1.65e15 M☉ (**+75%**) |
+
+Blind-mode M200 errors (-25%, +18%) are broadly consistent with what Tempel/CIRS calibration would predict for this richness. The informed-mode result is a useful caution, though: fixing R200/velocity dispersion to their real values **helped Coma a lot** (error dropped to +2%) but **hurt Abell 2029 badly** (error grew to +75%, exceeding even the method's own wide reported uncertainty of 45.5%). A2029 has a known X-ray "sloshing" structure indicating it isn't fully dynamically relaxed, which may explain why fixing R200 didn't help the NFW fit find a better-behaved solution here. Informed mode remains better *on average* (as the large-sample Tempel/CIRS comparisons show clearly), but this is a concrete reminder that it is not a strict, guaranteed improvement for every individual cluster.
+
+---
+
+
 
 These aren't tunable parameters, but are worth listing since they were found *during* this calibration process and materially affect how trustworthy earlier or third-party results might be:
 
