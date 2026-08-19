@@ -20,7 +20,7 @@ No single value works across extractions -- this was the first and most consiste
 |---|---|---|
 | 0.60 | -0.083 | 0.201 |
 | 0.68 | -0.029 | 0.195 |
-| **0.72** | **-0.004** | **0.191** |
+| **0.72** | **-0.004** | **0.191** |a
 | 0.75 | +0.015 | 0.188 |
 | 0.80 | +0.044 | 0.184 |
 
@@ -125,9 +125,11 @@ Restricts how fast a candidate contour's amplitude can grow (`gradu`) or fall (`
 
 ---
 
-## `mirror` -- confirmed as a required bug fix, not a tunable parameter
+## `mirror` -- velocity mirroring: keep on by default, but not universally
 
-Retested with the full current configuration (Deriche, gradu=1.0) across all three samples to make sure it still held after everything else changed:
+**A distinction worth being precise about**: this parameter controls *velocity* mirroring (duplicating each galaxy at both `+vlos` and `-vlos` before density estimation) -- it is unrelated to the *radial* mirroring (`r -> -r`, Serra et al. 2011 Section 4.3) that fixes the r=0 density-depletion problem. That radial mirroring is unconditional, always on, and not controlled by any exposed parameter; disabling it isn't possible and wasn't tested here. `mirror` is specifically about whether the velocity distribution is *assumed* symmetric about the cluster's systemic velocity.
+
+Retested with the full current configuration (Deriche, gradu=1.0) across all three main samples to make sure the general default still held after everything else changed:
 
 | Sample | mirror=TRUE | mirror=FALSE |
 |---|---|---|
@@ -135,7 +137,18 @@ Retested with the full current configuration (Deriche, gradu=1.0) across all thr
 | Unconstrained | M200 sesgo=-0.001, sd=0.369, n=60 | M200 sesgo=-0.315, **sd=0.618**, n=53 |
 | CIRS | M200 sesgo=+0.013, sd=0.291, n=67 | M200 sesgo=-0.078, sd=0.371, n=63 |
 
-Worse in every metric, every sample, without exception. This mirrors galaxies to negative r before density estimation (Serra et al. 2011, Section 4.3) to avoid artificially depleted density near r=0; disabling it is not a legitimate configuration choice.
+Worse in every metric, every sample, without exception -- confirming `mirror=TRUE` (the default) is the right general-purpose choice: the assumption of velocity symmetry is a reasonable one for a typical, unclassified cluster sample.
+
+**But this reverses for clusters specifically known to be unrelaxed.** Re-tested on the same CIRS relaxed/unrelaxed split used for the [systematic dynamical-state comparison](#) below (6 relaxed, 10 unrelaxed clusters):
+
+| | mirror=TRUE | mirror=FALSE |
+|---|---|---|
+| **Relaxed** | R200 sesgo=-20.7%, sd=0.271 \| M200 sesgo=-0.271, sd=0.347 | R200 sesgo=-22.8%, sd=0.343 \| M200 sesgo=-0.310, sd=**0.573** |
+| **Unrelaxed** | R200 sesgo=+16.5%, sd=0.290 \| M200 sesgo=+0.236, sd=0.309 | **R200 sesgo=+12.6%, sd=0.193** \| **M200 sesgo=+0.186, sd=0.256** |
+
+For relaxed clusters, removing the mirror makes things worse, consistent with the general-sample result above (as expected: the symmetry assumption is a good one for a genuinely relaxed system). For unrelaxed clusters specifically, removing it **improves every metric at once** -- less bias and less scatter, in both R200 and M200. This makes physical sense: in a merging or infalling system, an asymmetric velocity distribution can be real signal (relative motion between substructures), not sampling noise, and forcing symmetry onto it actively discards that information rather than cleaning it up.
+
+**Practical implication**: `mirror=TRUE` remains the right default for an unclassified sample (as the larger, general-purpose validation above shows). But if a cluster's dynamical state is known in advance (from the literature or an independent diagnostic) to be unrelaxed, `mirror=FALSE` is worth trying -- n=10 here is modest, so treat the exact numbers loosely, but the direction is clear and physically motivated, not just a small-sample fluctuation in one metric.
 
 ---
 
