@@ -36,13 +36,28 @@ image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[pr
       ylab = expression(v[proj] ~ (km/s)))
 ```
 
-Setting `plot=TRUE` inside `run_caustic()` itself gives a more complete diagnostic figure -- the escape surface, the fitted NFW curve, its uncertainty band (shaded, from the same per-radius D99/Serra et al. 2011 error estimate used for the M200 error bar), R200, and the member/outlier split:
+## Example: the Coma cluster
+
+As a real-world example (distinct from the `sample_data.txt` cluster used above), here's `run_caustic()` applied to the Coma cluster (Abell 1656), with `plot=TRUE` for the full diagnostic figure -- the escape surface, the fitted NFW curve, its uncertainty band (shaded, from the same per-radius D99/Serra et al. 2011 error estimate used for the M200 error bar), R200, and the member/outlier split:
+
+```r
+coma = read.csv("coma_candidates.csv")  # dproj, vlos for candidates around Coma
+r = run_caustic(coma$dproj, coma$vlos, clus_z = 0.0231, fbr = 0.50, plot = TRUE)
+```
 
 <p align="center">
   <img src="docs/images/coma_diagnostic_plot.png" width="70%">
 </p>
 
-*(Coma cluster, blind mode -- see [docs/parameter_calibration.md](docs/parameter_calibration.md) for this and other external validation tests against literature clusters.)*
+Blind mode (no external prior), 1743 candidates:
+
+| | This run | Literature (Sohn et al. 2017, same caustic technique) | Difference |
+|---|---|---|---|
+| R200 | 2.03 Mpc | 2.23 Mpc | -9% |
+| M200 | 9.68×10¹⁴ M☉ | 1.29×10¹⁵ M☉ | -25% |
+| Velocity dispersion | 897 km/s | 947 km/s | -5% |
+
+The M200 error here is close to what the method's own reported uncertainty would suggest for this richness. See [docs/parameter_calibration.md](docs/parameter_calibration.md) for this same test on a second cluster (Abell 2029) and in informed mode, including a case where fixing R200 to its known value made the estimate *worse* -- a useful reminder that informed mode is more precise *on average*, not a guaranteed improvement for every individual cluster.
 
 ## Main functions
 
