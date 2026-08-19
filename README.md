@@ -14,42 +14,39 @@ install.packages(c("imager", "magicaxis"))
 
 ## Basic usage
 
-Run the code, here using the sample data provided with unknown values of R200 and cluster velocity dispersion (blind mode):
+Run the code, here using the sample data provided -- candidates around the Coma cluster (Abell 1656) -- with unknown values of R200 and cluster velocity dispersion (blind mode):
 
 ```r
 source("RCausticMass.R")
-data = read.table("sample_data.txt")
+data = read.table("coma_sample.txt", header = TRUE)
 data = subset(data, CID == 1)
-r = run_caustic(data$dproj, data$vlos, data$zclus, r200 = NA, clus_vdisp = NA)
+r = run_caustic(data$dproj, data$vlos, data$zclus[1], r200 = NA, clus_vdisp = NA, fbr = 0.50)
 ```
 
 If R200 and the velocity dispersion are known from an external catalogue, pass them and set `fix_r200 = TRUE` for a more precise, informed run:
 
 ```r
-r = run_caustic(data$dproj, data$vlos, data$zclus, r200 = 1.2, clus_vdisp = 650, fix_r200 = TRUE)
+r = run_caustic(data$dproj, data$vlos, data$zclus[1], r200 = 2.23, clus_vdisp = 947, fix_r200 = TRUE)
 ```
 
-The smoothed phase-space of galaxies can be plotted as well:
+Setting `plot=TRUE` gives a full diagnostic figure -- the escape surface, the fitted NFW curve, its uncertainty band (shaded, from the same per-radius D99/Serra et al. 2011 error estimate used for the M200 error bar), R200, and the member/outlier split:
 
 ```r
-image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[proj] ~ (Mpc)),
-      ylab = expression(v[proj] ~ (km/s)))
-```
-
-## Example: the Coma cluster
-
-As a real-world example (distinct from the `sample_data.txt` cluster used above), here's `run_caustic()` applied to the Coma cluster (Abell 1656), with `plot=TRUE` for the full diagnostic figure -- the escape surface, the fitted NFW curve, its uncertainty band (shaded, from the same per-radius D99/Serra et al. 2011 error estimate used for the M200 error bar), R200, and the member/outlier split:
-
-```r
-coma = read.csv("coma_candidates.csv")  # dproj, vlos for candidates around Coma
-r = run_caustic(coma$dproj, coma$vlos, clus_z = 0.0231, fbr = 0.50, plot = TRUE)
+r = run_caustic(data$dproj, data$vlos, data$zclus[1], fbr = 0.50, plot = TRUE)
 ```
 
 <p align="center">
   <img src="docs/images/coma_diagnostic_plot.png" width="70%">
 </p>
 
-Blind mode (no external prior), 1743 candidates:
+The smoothed phase-space itself can also be plotted directly:
+
+```r
+image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[proj] ~ (Mpc)),
+      ylab = expression(v[proj] ~ (km/s)))
+```
+
+**How well did it do?** Coma is well-studied enough to check: the blind-mode run above (1743 candidates) gives
 
 | | This run | Literature (Sohn et al. 2017, same caustic technique) | Difference |
 |---|---|---|---|
@@ -57,7 +54,7 @@ Blind mode (no external prior), 1743 candidates:
 | M200 | 9.68×10¹⁴ M☉ | 1.29×10¹⁵ M☉ | -25% |
 | Velocity dispersion | 897 km/s | 947 km/s | -5% |
 
-The M200 error here is close to what the method's own reported uncertainty would suggest for this richness. See [docs/parameter_calibration.md](docs/parameter_calibration.md) for this same test on a second cluster (Abell 2029) and in informed mode, including a case where fixing R200 to its known value made the estimate *worse* -- a useful reminder that informed mode is more precise *on average*, not a guaranteed improvement for every individual cluster.
+close to what the method's own reported uncertainty would suggest for this richness. See [docs/parameter_calibration.md](docs/parameter_calibration.md) for the same test on a second cluster (Abell 2029) and in informed mode, including a case where fixing R200 to its known value made the estimate *worse* -- a useful reminder that informed mode is more precise *on average*, not a guaranteed improvement for every individual cluster.
 
 ## Main functions
 
