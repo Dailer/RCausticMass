@@ -14,7 +14,7 @@ install.packages(c("imager", "magicaxis"))
 
 ## Basic usage
 
-Run the code, here using the sample data provided -- candidates around the Coma cluster (Abell 1656) -- with unknown values of R200 and cluster velocity dispersion (blind mode):
+Run the code, here using the sample data provided -- candidates around the Coma cluster (Abell 1656), extracted from SDSS DR20 -- with unknown values of R200 and cluster velocity dispersion (blind mode):
 
 ```r
 source("RCausticMass.R")
