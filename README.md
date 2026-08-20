@@ -54,7 +54,11 @@ image(r$x_range, r$y_range, r$img_tot, asp = NA, las = 1, xlab = expression(R[pr
 | M200 | 9.68×10¹⁴ M☉ | 1.29×10¹⁵ M☉ | -25% |
 | Velocity dispersion | 897 km/s | 947 km/s | -5% |
 
-close to what the method's own reported uncertainty would suggest for this richness. See [docs/parameter_calibration.md](docs/parameter_calibration.md) for the same test on a second cluster (Abell 2029) and in informed mode, including a case where fixing R200 to its known value made the estimate *worse* -- a useful reminder that informed mode is more precise *on average*, not a guaranteed improvement for every individual cluster.
+close to what the method's own reported uncertainty would suggest for this richness.
+
+That comparison uses another caustic-technique measurement as the reference, though, which isn't a fully independent check. A fairer one: the median of six *non*-caustic mass estimates in the literature for Coma (X-ray, virial, weak lensing, Jeans analysis, and two data-driven methods) is 7.0×10¹⁴ M☉ -- and this run's M200 (9.68×10¹⁴) actually sits *closer* to that independent consensus than to Sohn et al.'s own caustic-based value. That said, "closer" shouldn't be read as "correct" -- these independent techniques disagree with each other by up to a factor of ~3.5 (0.53-1.88×10¹⁵ M☉ across the six), so the consensus itself carries real uncertainty, and a controlled simulation study (Old et al. 2018, using the Cluster-EAGLE mocks with known true mass) found that caustic and virial masses both tend to run ~30-50% high relative to X-ray hydrostatic mass specifically. There is no single agreed-upon "true" mass for Coma to validate against -- see [docs/parameter_calibration.md](docs/parameter_calibration.md) for the full multi-technique comparison and what was learned trying to use it to calibrate `fbr`.
+
+See [docs/parameter_calibration.md](docs/parameter_calibration.md) also for the same Sohn-based test on a second cluster (Abell 2029) and in informed mode, including a case where fixing R200 to its known value made the estimate *worse* -- a useful reminder that informed mode is more precise *on average*, not a guaranteed improvement for every individual cluster.
 
 ## Main functions
 
