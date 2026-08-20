@@ -404,9 +404,24 @@ These aren't tunable parameters, but are worth listing since they were found *du
 
 ---
 
+## v1.0 vs. current: what the accumulated changes actually bought
+
+All of the above compares parameter choices within already-modified code. A different, more basic question: how does the true original (`v1.0`, github.com/Dailer/RCausticMass release tag, 281 lines, a single `run_caustic()` function with everything inline -- no `run_caustic_robust()`, `mirror=FALSE` default, hardcoded `rlimit=5.8`/`xmax=6`, no gradient restriction on contour tracing, linear (not log-spaced) κ levels, `fbr=0.65` default) compare to the current file, tested with each version's own defaults on the same 200 real Tempel et al. (2017) clusters (both extractions)?
+
+| | Convergence (`run_caustic()` alone) | R200 bias | R200 sd | M200 bias | M200 sd |
+|---|---|---|---|---|---|
+| v1.0 (original) | **108/200 (54.0%)** | -4.5% | 0.266 | **-12.0%** | 0.355 |
+| Current | 95/200 (47.5%) | -1.8% | 0.255 | **-0.0%** | 0.332 |
+
+**The original converges more often but is measurably less accurate when it does.** This isn't a contradiction -- it's the direct, explainable consequence of the bug fixes and default changes documented throughout this file: with no gradient restriction on contour tracing, more candidate contours qualify as "valid" (nothing constrains how fast their amplitude can grow or fall), making it easier to find *some* contour that satisfies `findcontours()`'s span requirements -- at the cost of that contour being a worse fit. The fixed `rlimit=5.8` (vs. the current adaptive `0.8×xmax`) crops the wide Unconstrained extraction more aggressively, which also tends to help raw convergence by excluding more of the noisy outer field, again without the calibration behind the current adaptive choice. `mirror=FALSE`'s effect on convergence specifically is small (as found elsewhere in this document); its cost is almost entirely to precision.
+
+Once `run_caustic_robust()` (which doesn't exist at all in v1.0) is added on the current version, the comparison isn't close: 130/200 (65.0%) vs. v1.0's 108/200 (54.0%), with better precision in every converged case besides. The lesson: convergence rate alone is not a sufficient metric to judge a change by -- several of the changes that *reduced* raw convergence (gradient restriction, adaptive rlimit, mirror) were net improvements once precision is weighed too, and had to be explicitly compensated for with `run_caustic_robust()`'s recovery logic rather than by reverting them.
+
+---
+
 ## Conclusion
 
-**What actually changed from the code's original defaults**, after everything documented above: `blur_gaussian=FALSE` (Deriche instead of Young-van Vliet), `gradu=1.0` (was 0.5), and `run_caustic_robust()` gained a second recovery path (`min_n` search) alongside its original `rlimit` search. That's the complete list of default changes to `RCausticMass.R` itself. Everything else tested -- dozens of parameters, several genuinely good ideas among them -- either made no difference or made things worse, and was removed from the code again after testing rather than left in as unused options (see the note at the top of "Predicting dynamical state..." above for the specific list).
+**What actually changed from where this document's calibration record starts** (already past several earlier fixes -- radial mirroring, adaptive `rlimit`/`xmax`, log-spaced κ, gradient restriction, `mirror=TRUE` as default -- all already in place by that point): `blur_gaussian=FALSE` (Deriche instead of Young-van Vliet), `gradu=1.0` (was 0.5), and `run_caustic_robust()` gained a second recovery path (`min_n` search) alongside its original `rlimit` search. That's the complete list of default changes made *during* the process this file documents. Everything else tested here -- dozens of parameters, several genuinely good ideas among them -- either made no difference or made things worse, and was removed from the code again after testing rather than left in as unused options (see the note at the top of "Predicting dynamical state..." above for the specific list). For the full picture back to the true original release (`v1.0`), including what all of those earlier fixes bought together, see "v1.0 vs. current" just above.
 
 **What the calibration numbers mean in practice**: `fbr` is the single most consequential number in this pipeline, and it is not one number -- it depends on extraction geometry (proportional-to-R200 vs. fixed-radius), and, more subtly, on cluster mass itself. Neither dependency is fully resolved into an automatic correction; both are documented as things to be aware of and recalibrate for when the context changes, not solved problems.
 
