@@ -37,6 +37,48 @@ No single value works across extractions -- this was the first and most consiste
 
 Note the zero-bias crossing for M200 sits slightly above the values chosen for R200 in the Unconstrained case (~0.52-0.55 vs 0.50) -- 0.50 was kept since the difference is within run-to-run noise and R200 sesgo is already near zero there.
 
+### A single `fbr` also hides a real mass-dependent bias -- and it's mass, not richness
+
+Investigated after noticing that M200 residuals correlate with true cluster mass (Pearson r=-0.35 to -0.40 in both Tempel and CIRS, using the single dataset-wide `fbr`): massive clusters are systematically *underestimated*, less massive ones *overestimated*. Several alternative explanations were ruled out first -- the radial extraction limit (`rlimit`), extrapolating the escape curve beyond the data with `nfw_escape_curve()`, and `kernel="adaptive"` all left the bias unchanged or made it worse (see "Kernel choice" and the discussion of `rlimit` elsewhere in this document). The real cause: **the optimal `fbr` itself depends on cluster mass**, confirmed independently in both CIRS and Tempel by splitting each sample into mass terciles and finding the zero-bias `fbr` separately in each:
+
+| Mass tercile | CIRS optimal fbr | Tempel (unconstrained) optimal fbr |
+|---|---|---|
+| Low | ≈0.36 | <0.30 |
+| Mid | ≈0.35 | ≈0.50 |
+| **High** | **≈0.60** | **≈0.63** |
+
+Monotonic and consistent in direction across both independent samples: the most massive clusters need close to *double* the `fbr` of the least massive ones. A single dataset-wide `fbr` (0.44 for CIRS, 0.50 for Tempel unconstrained) sits close to the low/mid terciles' optimum and is therefore too low for the high-mass tercile -- exactly reproducing the systematic underestimation found for massive clusters.
+
+**Richness (N200) does not show the same pattern** -- tested the identical way (N200 terciles instead of mass terciles) in both samples:
+
+| N200 tercile | CIRS optimal fbr | Tempel optimal fbr |
+|---|---|---|
+| Low | ≈0.50 | ≈0.50 |
+| Mid | ≈0.37 | ≈0.59 |
+| High | ≈0.39 | ≈0.40 |
+
+Not monotonic, and not even in a consistent order between the two datasets -- confirming this is a genuine mass effect, not richness in disguise (richer clusters tend to be more massive, so the two are correlated, but only mass shows a clean, reproducible relationship with the needed `fbr`). Physically plausible explanation: `fbr`/F_β(r) corrects for velocity-anisotropy, and orbital anisotropy in cluster galaxy populations may itself depend systematically on halo mass.
+
+**Not yet implemented as an automatic correction** -- doing so would need a preliminary mass estimate (chicken-and-egg with the thing `fbr` is used to compute) and calibration on a larger sample than the ~20-25 clusters per tercile used here. Documented as a known, real source of bias for now: if you have independent reason to expect a cluster is unusually massive, consider a higher `fbr` than the dataset-wide default.
+
+### An iterative self-correction was tried -- works on average, adds per-cluster noise
+
+Tested a two-pass approach on CIRS: run once with the dataset-wide `fbr` (0.44), look up a mass-informed `fbr` from a simple interpolation across the tercile anchor points (logM200=13.911→0.36, 14.364→0.35, 14.684→0.60), then re-run with that value. Per-tercile bias improved in all three groups (e.g. the high tercile went from -0.187 to -0.100 dex), confirming the correction works in the intended direction. But overall scatter got *worse* (sd 0.291→0.371) -- the correction depends on each cluster's own noisy first-pass mass estimate, so errors in that first pass propagate into a wrong `fbr` choice for that specific cluster. A damped version (blending the suggested `fbr` partially with the default, e.g. 30% toward the suggestion) gives a tunable trade-off -- less scatter penalty (0.291→0.311 at 30% damping) for a smaller bias improvement (high tercile: -0.187→-0.141) -- but there is no damping level that improves both at once. Not implemented in the code (no free lunch here), but documented as a real, usable option for someone willing to trade some scatter for less mass-dependent bias.
+
+**Velocity dispersion was tested as an alternative predictor to mass** for the same purpose, on the idea that it's measured more directly (no dependence on the caustic fit itself). Using each cluster's *real* catalog vdisp, binned into quintiles: shows the same monotonic increase with `fbr` as mass does, but more gradually (CIRS: fbr≈0.39 at vdisp=361 km/s up to ≈0.61 at vdisp=784 km/s, roughly linear, R²=0.78; Tempel confirms the same slope within a factor ~1.2, though noisier, R²=0.32). The problem: this requires knowing the *true* vdisp, which isn't available in blind mode. Substituting the *preliminary* vdisp already computed internally (`vdisp0`, from the fixed ≤3 Mpc window used before any contour fitting) breaks the relationship entirely -- not monotonic, because `vdisp0` inherits its own richness/window-size-dependent bias (documented earlier: it over-estimates badly for intrinsically small clusters, where the fixed window is too wide) that has nothing to do with the true dynamical state the `fbr` relationship is tracking. The internally-iterated version of the preliminary vdisp (the one that self-consistently narrows its radius, similar to the blind window-narrowing method built for Coma) doesn't fix this either (correlation with true vdisp only 0.40). **No single-pass, no-external-data way to predict the right `fbr` was found.**
+
+### A caution about what "true" mass even means here
+
+All of the above treats Tempel/CIRS/Sohn et al. masses as ground truth. They aren't, and investigating this further changed the picture substantially:
+
+- **Tempel's masses come from the virial theorem** (group velocity dispersion and virial radius from its own FoF group finder) -- genuinely independent of the caustic technique, unlike CIRS and Sohn et al. (2017), which both *are* caustic-technique measurements. So the CIRS/Sohn-based mass-`fbr` relationship carries a real circularity concern (calibrating a caustic-technique parameter against another caustic-technique measurement); the Tempel-based one does not.
+- Recalibrating `fbr` for Coma specifically against a **multi-technique literature consensus** (median of X-ray, virial, Falco et al. 2014, Jeans, neural-flow, and deep-learning mass estimates -- deliberately excluding the two caustic-technique ones) gives `fbr≈0.39` -- barely different from the dataset-wide default (0.44), and far below the ≈0.63 needed to match Sohn et al.'s own caustic mass for Coma.
+- But the independent-consensus median (0.70e15 M☉) is itself pulled down by X-ray hydrostatic estimates, which are well known in the literature to under-estimate true mass by omitting non-thermal pressure support (turbulence, bulk gas motions) -- so it isn't obviously "more correct" either.
+- A controlled simulation study (Cluster-EAGLE, Old et al.) found that **both virial and caustic methods systematically over-estimate relative to X-ray hydrostatic mass** in mock clusters with known true mass (median ratios ≈1.3 and ≈1.5 respectively) -- consistent in direction with what we see, but this specific study found *no* significant mass-dependence in that bias for line-of-sight/projected samples, in tension with what we found on real clusters.
+- A direct comparison against **weak lensing** (arguably the most model-independent technique available, and the only one tested here that's neither dynamical nor hydrostatic) found no consistent direction at all: of two clean, uncontaminated overlapping clusters (Kubo et al. 2009, Sloan Nearby Cluster Weak Lensing Survey) both massive enough to fall in the "high" tercile, `run_caustic()`'s default (`fbr=0.44`) over-estimated one (A1767: +0.17 dex) and under-estimated the other (A1066: -0.29 dex) by a similar margin; raising `fbr` to 0.60 made the first case worse (+0.35 dex) and the second better (-0.12 dex).
+
+**Bottom line**: the mass-dependent trend in `fbr` is real and statistically well-established across dozens of clusters in two datasets. But there is no single "true" mass to calibrate it against -- every technique (caustic, virial, X-ray, weak lensing) carries its own known systematic, and at the level of any *individual* cluster, ordinary scatter is large enough to swamp whatever the mass-based correction would predict. Treat the mass-`fbr` relationship as a genuine population-level effect worth knowing about, not a per-cluster correction to apply with confidence.
+
 ---
 
 ## `q` (velocity-axis compression before the isotropic kernel)
