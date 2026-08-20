@@ -236,7 +236,7 @@ A held-out validation (calibrating `fbr` on one random half of the Constrained s
 
 ## External validation: literature clusters with independently published R200/M200
 
-All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against well-studied clusters with R200/M200 published independently (not from Tempel/CIRS), using several different techniques for comparison:
+All the calibration above uses Tempel et al. (2017) and CIRS (Rines & Diaferio 2006) as ground truth. As an independent check, `run_caustic()` was also tested against well-studied clusters with R200/M200 published independently (not from Tempel/CIRS), using several different techniques for comparison. Candidate galaxies for these individual clusters (Coma, Abell 2029, Abell 2199, Abell 1795, Abell 85, Abell 119) were extracted from **SDSS DR20**, separately from the Tempel/CIRS bulk samples.
 
 | Cluster | N candidates | Reference technique | M200 real | M200 est. (blind) | M200 est. (informed) |
 |---|---|---|---|---|---|
