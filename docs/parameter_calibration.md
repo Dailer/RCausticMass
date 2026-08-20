@@ -16,7 +16,7 @@ All tables report blind mode (no R200/velocity-dispersion prior) unless noted. `
 No single value works across extractions -- this was the first and most consistent finding of the whole calibration effort. Final sweep, with the current full configuration (Deriche filter, `gradu=1.0`):
 
 **Constrained** (n=38 throughout):
-| fbr | R200 sesgo | M200 sd |
+| fbr | R200 bias | M200 sd |
 |---|---|---|
 | 0.60 | -0.083 | 0.201 |
 | 0.68 | -0.029 | 0.195 |
@@ -25,7 +25,7 @@ No single value works across extractions -- this was the first and most consiste
 | 0.80 | +0.044 | 0.184 |
 
 **Unconstrained** (n=60 throughout):
-| fbr | R200 sesgo | M200 sd |
+| fbr | R200 bias | M200 sd |
 |---|---|---|
 | 0.40 | -0.121 | 0.380 |
 | 0.48 | -0.036 | 0.371 |
@@ -35,7 +35,7 @@ No single value works across extractions -- this was the first and most consiste
 
 **CIRS**: fbr=0.44 chosen the same way (bias crossing zero), n≈65-67 depending on exact configuration.
 
-Note the zero-bias crossing for M200 sits slightly above the values chosen for R200 in the Unconstrained case (~0.52-0.55 vs 0.50) -- 0.50 was kept since the difference is within run-to-run noise and R200 sesgo is already near zero there.
+Note the zero-bias crossing for M200 sits slightly above the values chosen for R200 in the Unconstrained case (~0.52-0.55 vs 0.50) -- 0.50 was kept since the difference is within run-to-run noise and R200 bias is already near zero there.
 
 ### A single `fbr` also hides a real mass-dependent bias -- and it's mass, not richness
 
@@ -175,9 +175,9 @@ Retested with the full current configuration (Deriche, gradu=1.0) across all thr
 
 | Sample | mirror=TRUE | mirror=FALSE |
 |---|---|---|
-| Constrained | M200 sesgo=+0.021, sd=0.191, n=38 | M200 sesgo=-0.166, sd=0.289, n=37 |
-| Unconstrained | M200 sesgo=-0.001, sd=0.369, n=60 | M200 sesgo=-0.315, **sd=0.618**, n=53 |
-| CIRS | M200 sesgo=+0.013, sd=0.291, n=67 | M200 sesgo=-0.078, sd=0.371, n=63 |
+| Constrained | M200 bias=+0.021, sd=0.191, n=38 | M200 bias=-0.166, sd=0.289, n=37 |
+| Unconstrained | M200 bias=-0.001, sd=0.369, n=60 | M200 bias=-0.315, **sd=0.618**, n=53 |
+| CIRS | M200 bias=+0.013, sd=0.291, n=67 | M200 bias=-0.078, sd=0.371, n=63 |
 
 Worse in every metric, every sample, without exception -- confirming `mirror=TRUE` (the default) is the right general-purpose choice: the assumption of velocity symmetry is a reasonable one for a typical, unclassified cluster sample.
 
@@ -185,8 +185,8 @@ Worse in every metric, every sample, without exception -- confirming `mirror=TRU
 
 | | mirror=TRUE | mirror=FALSE |
 |---|---|---|
-| **Relaxed** | R200 sesgo=-20.7%, sd=0.271 \| M200 sesgo=-0.271, sd=0.347 | R200 sesgo=-22.8%, sd=0.343 \| M200 sesgo=-0.310, sd=**0.573** |
-| **Unrelaxed** | R200 sesgo=+16.5%, sd=0.290 \| M200 sesgo=+0.236, sd=0.309 | **R200 sesgo=+12.6%, sd=0.193** \| **M200 sesgo=+0.186, sd=0.256** |
+| **Relaxed** | R200 bias=-20.7%, sd=0.271 \| M200 bias=-0.271, sd=0.347 | R200 bias=-22.8%, sd=0.343 \| M200 bias=-0.310, sd=**0.573** |
+| **Unrelaxed** | R200 bias=+16.5%, sd=0.290 \| M200 bias=+0.236, sd=0.309 | **R200 bias=+12.6%, sd=0.193** \| **M200 bias=+0.186, sd=0.256** |
 
 For relaxed clusters, removing the mirror makes things worse, consistent with the general-sample result above (as expected: the symmetry assumption is a good one for a genuinely relaxed system). For unrelaxed clusters specifically, removing it **improves every metric at once** -- less bias and less scatter, in both R200 and M200. This makes physical sense: in a merging or infalling system, an asymmetric velocity distribution can be real signal (relative motion between substructures), not sampling noise, and forcing symmetry onto it actively discards that information rather than cleaning it up.
 
@@ -269,12 +269,12 @@ Given the `mirror` finding above (relaxed vs. unrelaxed clusters need opposite s
 
 **But using it as an automatic decision rule for `mirror` on a noisier extraction failed badly.** Tested end-to-end on 39 real Tempel et al. (2017) clusters (unconstrained extraction): for each cluster, the DS test decided `mirror=TRUE`/`FALSE`, then `run_caustic()` ran with that choice, compared against a fixed `mirror=TRUE` baseline.
 
-| | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+| | R200 bias | R200 sd | M200 bias (dex) | M200 sd |
 |---|---|---|---|---|
 | Baseline (`mirror=TRUE` always) | -9.7% | 0.269 | -0.105 | 0.356 |
 | DS-adaptive choice | -16.7% | 0.325 | -0.217 | 0.656 |
 
-Worse in every metric. Specifically for the 18 clusters where the DS test picked `mirror=FALSE`: had they used `mirror=TRUE` instead, R200 sesgo would have been -2.8% (sd=0.228); with the DS-chosen `mirror=FALSE` it was -32.3% (sd=0.258) -- a clear wrong call, not a marginal one. Likely explanation: DS was validated on CIRS, a curated sample with good per-cluster spectroscopic coverage; on Tempel's wide, contamination-heavy "unconstrained" extraction, a significant DS detection more often reflects field interlopers than genuine merger substructure, so it doesn't carry the same meaning it did on the cleaner sample it was validated against.
+Worse in every metric. Specifically for the 18 clusters where the DS test picked `mirror=FALSE`: had they used `mirror=TRUE` instead, R200 bias would have been -2.8% (sd=0.228); with the DS-chosen `mirror=FALSE` it was -32.3% (sd=0.258) -- a clear wrong call, not a marginal one. Likely explanation: DS was validated on CIRS, a curated sample with good per-cluster spectroscopic coverage; on Tempel's wide, contamination-heavy "unconstrained" extraction, a significant DS detection more often reflects field interlopers than genuine merger substructure, so it doesn't carry the same meaning it did on the cleaner sample it was validated against.
 
 **Takeaway**: the DS test is a useful *manual* diagnostic on a reasonably clean candidate sample (which is what it was validated for in the literature), not a plug-in automatic classifier for noisy, wide-window extractions.
 
@@ -299,7 +299,7 @@ This was confirmed exhaustively: extending `fit_r_upper_mult` from 1.0 to 2.0 pr
 
 **Where `fitting_radii` genuinely does matter**: `mass_method='bayesian_joint'`, which fits `rii`/`ArD` directly for a joint (M200, concentration) estimate. Tested there (60 real Tempel clusters): extending `fit_r_upper_mult` made things *worse*, monotonically --
 
-| fit_r_upper_mult | M200 sesgo (dex) | M200 sd |
+| fit_r_upper_mult | M200 bias (dex) | M200 sd |
 |---|---|---|
 | 1.0 (default) | +0.202 | 0.381 |
 | 1.1 | +0.210 | 0.383 |
@@ -314,7 +314,7 @@ So the answer to "does widening/narrowing the fit range help" is no either way: 
 
 Given the above, a genuinely different question is whether integrating something *other than* the raw `Ar_finalD` curve -- which can be noisy, especially for poorly-sampled clusters -- would help, since (per the previous section) `mass_method='integral'` never gets that option by default. Added `mass_curve` (`'raw'` default, `'nfw_fit'`, `'smooth'`) to test this directly. Tested on 95 real Tempel clusters (both extractions):
 
-| `mass_curve` | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+| `mass_curve` | R200 bias | R200 sd | M200 bias (dex) | M200 sd |
 |---|---|---|---|---|
 | `raw` (default) | -1.8% | 0.255 | -0.000 | 0.332 |
 | `nfw_fit` (integrate `caustic_fit` instead) | +4.5% | 0.303 | +0.087 | 0.322 |
@@ -337,7 +337,7 @@ While investigating the above, `caustic_profile` (`Ar_finalD`) was found to *dec
 
 `compute_edge=TRUE` computes a second, independent amplitude curve (`Ar_finalE`) from the empirical extremes of raw galaxy velocities per radial bin, rather than the phase-space density map `Ar_finalD` is drawn from. As already noted in the code's own documentation: alone, it's less precise than the main curve (77% vs. 90% of 100 real Tempel clusters within a factor ~2 of the true mass). Re-tested here specifically for whether *averaging* the two helps, two ways, on 60 real Tempel clusters:
 
-| | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+| | R200 bias | R200 sd | M200 bias (dex) | M200 sd |
 |---|---|---|---|---|
 | Main curve only | -1.9% | 0.292 | -0.001 | 0.369 |
 | Average of final R200/M200 results | -7.0% | 0.301 | -0.073 | 0.386 |
@@ -366,7 +366,7 @@ Of the 105 clusters that failed to converge with a plain `run_caustic()` call, 6
 
 Tested on the Tempel extended sample (unconstrained extraction, n=100): comparing the 60 clusters that converged with a plain `run_caustic()` call against the 10 additional ones recovered by `run_caustic_robust()` (8 via `rlimit`, 2 via `min_n`):
 
-| | n | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+| | n | R200 bias | R200 sd | M200 bias (dex) | M200 sd |
 |---|---|---|---|---|---|
 | Converged normally | 60 | -1.9% | 0.292 | -0.001 | 0.369 |
 | **Recovered by `run_caustic_robust()`** | 10 | **+8.5%** | **0.375** | **+0.130** | **0.402** |
@@ -377,7 +377,7 @@ Worse in every metric -- confirming the function's own "treat as lower-confidenc
 
 Using `N200` (galaxies inside the *estimated* R200 -- computed from `caustic_outliers` and `r200_est`, not returned directly by `run_caustic()` but easy to derive) as the richness measure, tested across the full Tempel sample (both extractions, n=130 converged, `run_caustic_robust()` included):
 
-| N200 | n | R200 sesgo | R200 sd | M200 sesgo (dex) | M200 sd |
+| N200 | n | R200 bias | R200 sd | M200 bias (dex) | M200 sd |
 |---|---|---|---|---|---|
 | **0-5** | 16 | **-29.9%** | 0.229 | **-44.3%** | **0.601** |
 | 6-10 | 69 | -7.3% | 0.302 | -7.7% | 0.363 |
