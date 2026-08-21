@@ -52,6 +52,24 @@ Tempel above is our own extraction, from a broad group catalogue. CIRS is a genu
 
 The same blind-vs-informed pattern holds here as for Tempel: informed mode visibly tightens the scatter around the 1:1 line. CIRS's own precision sits between the two Tempel extractions -- unsurprising, since its candidate-selection convention (fixed radius, similar in spirit to "Unconstrained") is less tightly tied to true membership than "Constrained" is, but the underlying data and target selection differ enough from Tempel that it isn't a direct apples-to-apples comparison of extraction geometry alone.
 
+## A fourth check: cosmological simulation ground truth (TNG300)
+
+Everything above compares against *measured* masses, which -- as [docs/parameter_calibration.md](parameter_calibration.md) documents at length -- carry their own technique-dependent systematics. TNG300 (IllustrisTNG, 43 massive halos, z=0.06) provides an alternative with no such ambiguity: true M200/R200 and true 3D membership for every halo, with mock "observations" built by projecting the real 3D data along a line of sight, the same way a real telescope only ever sees one projection of a real cluster.
+
+| R200, blind (N=43, ~200 members) | M200, blind (N=43, ~200 members) |
+|---|---|
+| ![R200 TNG300](images/fig10_R200_tng300.png) | ![M200 TNG300](images/fig11_M200_tng300.png) |
+
+Richness here was downsampled from the simulation's full membership (thousands of subhalos per cluster -- far beyond what any spectroscopic survey reaches) to ~200, to be roughly comparable to the other samples above. `F_β(r)=0.42` was calibrated fresh against this simulation's true masses (independently of Tempel/CIRS) and came out close to the CIRS value (0.44) -- a reassuring cross-check from a completely different kind of ground truth.
+
+**The most important result from this sample isn't in the scatter plot above -- it's this:**
+
+<p align="center">
+  <img src="images/fig12_proyeccion_tng300.png" width="70%">
+</p>
+
+Because simulation data allows viewing the *same* physical cluster from multiple angles (something no real observation can ever do), 15 clusters were mock-observed along all three Cartesian axes. The resulting spread in M200 for a single cluster, from viewing angle alone, averaged sd≈0.09 dex -- essentially as large as the *entire* scatter measured across different clusters anywhere else in this document. Put differently: a large fraction of what looks like "estimation error" when comparing to a real cluster's mass may not be reducible by any algorithmic improvement at all -- it's a geometric consequence of which direction we happen to be looking at that specific cluster from. See [docs/parameter_calibration.md](parameter_calibration.md) for the full analysis, including how this finding revises two earlier conclusions in this project (the mass-dependence of `fbr`, and the `mirror` parameter's relationship to cluster dynamical state).
+
 ## Summary
 
 | Extraction | Mode | N |
@@ -62,5 +80,6 @@ The same blind-vs-informed pattern holds here as for Tempel: informed mode visib
 | Unconstrained (Tempel) | Informed | 250 |
 | CIRS | Blind | 67 |
 | CIRS | Informed | 63 |
+| TNG300 simulation | Blind, ~200 members | 43 |
 
-**Takeaway**: both the extraction geometry (proportional vs. fixed-radius, membership-constrained vs. fixed velocity window) and the availability of an external R200 prior have a first-order effect on precision -- comparable to or larger than most algorithmic refinements to the fitting method itself. See the main README's "Known limitations" section, and [docs/parameter_calibration.md](parameter_calibration.md) for the detailed calibration process behind the current defaults.
+**Takeaway**: both the extraction geometry (proportional vs. fixed-radius, membership-constrained vs. fixed velocity window) and the availability of an external R200 prior have a first-order effect on precision -- comparable to or larger than most algorithmic refinements to the fitting method itself. The TNG300 comparison adds a further, more fundamental one: line-of-sight projection angle alone can contribute as much scatter as everything else combined, a limit no amount of parameter tuning can overcome. See the main README's "Known limitations" section, and [docs/parameter_calibration.md](parameter_calibration.md) for the detailed calibration process behind the current defaults.
