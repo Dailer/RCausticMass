@@ -1212,34 +1212,45 @@ extend_outliers_nfw = function(rproj, vproj, result){
 
 # Main function
 #
-# `fbr` default: 0.6, not the literature value (Serra et al. 2011 use 0.7;
-# Diaferio & Geller 1997 / Diaferio 1999 use 0.5). This project calibrated
-# fbr empirically against 100 real clusters from Tempel et al. (2017),
-# since neither literature value was derived for this exact pipeline (this
-# implementation's own kernel, contour-finding, and NFW-fit choices differ
-# in several details from both D99's and Serra et al. 2011's). Findings:
-#   - kernel='gaussian' (default), self-consistent r200_est (fix_r200=F):
-#     fbr=0.6 gives ~zero median bias in log M200, n=70/100 converged,
-#     IQR([-0.14,0.16]) dex, 80% within a factor ~2 of the true M200.
-#   - kernel='gaussian', fix_r200=T (R200/vdisp held fixed at trusted,
-#     externally known values instead of self-consistently re-derived --
-#     see fix_r200 documentation below): fbr=0.6 gives essentially the
-#     same near-zero bias but n=77/100 converged, a much tighter
-#     IQR([-0.11,0.07]) dex, and 91% within a factor ~2. Holding r200/vdisp
-#     fixed when they are independently known (e.g. from a group catalogue)
-#     removes a real, measured source of noise -- re-deriving r200_est
-#     from the density profile is itself an error-prone step whose errors
-#     otherwise propagate directly into M200_est.
-#   - kernel='adaptive': needs a much smaller fbr (~0.12-0.25 depending on
-#     the h_opt normalisation constant used, see adaptive_kernel_2d()) and
-#     tops out around ~50-60% within a factor ~2 regardless of that
-#     constant -- a real precision ceiling below the gaussian kernel's,
-#     not merely a calibration issue.
-# Re-validate this default if the input field-of-view conventions, sample
-# richness, or kernel choice differ substantially from this test.
+# *** READ THIS BEFORE TRUSTING THE DEFAULT `fbr` ***
+#
+# `fbr` (F_β(r), the velocity-anisotropy correction in the mass integral)
+# is the single most consequential parameter in this pipeline, and there is
+# NO universal correct value -- it depends on your candidate-extraction
+# convention, and to a lesser extent on cluster mass. The default below
+# (0.50) is a reasonable starting point specifically for the most common
+# case -- candidates pulled directly from a catalogue like SDSS within a
+# fixed projected radius (e.g. several Mpc, no prior membership cut) -- but
+# you should actively choose `fbr` based on your own extraction rather than
+# trust this blindly. From extensive calibration against real clusters
+# (see docs/parameter_calibration.md for the full record and evidence):
+#
+#   - Fixed-radius extraction, no membership prior (e.g. raw SDSS pull
+#     within N Mpc of a target position -- the CIRS- and Coma-style case
+#     tested throughout this project): fbr ~ 0.44-0.50.
+#   - Proportional-to-R200 extraction, velocity window bounded by a
+#     preliminary/confirmed membership list (e.g. 3xR200, |v|<v_max of
+#     known members): fbr ~ 0.72 -- noticeably higher; using the
+#     fixed-radius value here will under-estimate mass.
+#   - fbr also has a real, if harder-to-use, mass dependence: the most
+#     massive clusters tested needed close to double the fbr of the least
+#     massive ones. Simulation-based validation (TNG300, true mass) found
+#     this dependence largely disappears against ground truth, suggesting
+#     much of the real-data trend reflects the reference masses' own
+#     mass-dependent systematics rather than the caustic technique itself
+#     -- so this is not implemented as an automatic correction. If you
+#     have independent reason to expect an unusually massive cluster,
+#     consider a somewhat higher fbr than the extraction-type default above.
+#   - kernel='adaptive' needs a much smaller fbr (~0.12-0.25) and has a
+#     lower precision ceiling regardless -- kernel='gaussian' (the default)
+#     is recommended over it.
+#
+# None of this replaces calibrating directly against known masses for your
+# own sample when that's possible -- these are starting points, not a
+# substitute for validation on your actual data.
 run_caustic=function(rproj, vproj, clus_z, r200 = NA, clus_vdisp = NA, rlimit = NA, 
                      vlimit = NA, xmax = NA, ymax = 4000, mirror = T, Om = .3, H0 = 70, 
-                     fbr = 0.6, q = 10, beta = NA, centering = F,
+                     fbr = 0.50, q = 10, beta = NA, centering = F,
                      M200_prior = NA, R200_prior = NA, comoving_input = F, fix_r200 = F,
                      kernel = c('gaussian', 'adaptive'), hc = NA,
                      # blur_gaussian controls isoblur()'s internal filter: FALSE uses the
