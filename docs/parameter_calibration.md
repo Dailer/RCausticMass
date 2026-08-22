@@ -13,6 +13,8 @@ All tables report blind mode (no R200/velocity-dispersion prior) unless noted. `
 
 ## `fbr` (the F_β mass-integral factor)
 
+**`run_caustic()`'s own default was updated from 0.6 to 0.50** as a result of everything documented in this section. The 0.6 value predated the discovery that `fbr`'s optimum depends heavily on extraction geometry (0.72 for proportional-to-R200/membership-bounded extractions, 0.44-0.50 for fixed-radius ones) -- it was a single-sample compromise from an earlier, less granular round of testing that matched neither of the two extraction-specific values eventually validated. 0.50 was chosen as the new default because it's the more reasonable starting point for the most common case of pulling candidates directly from a catalogue (SDSS or similar) within a fixed radius, with no prior membership information -- not because it's a universally correct value. See `run_caustic()`'s own in-code documentation (directly above its definition in `RCausticMass.R`) for the same guidance surfaced where a user is most likely to see it.
+
 No single value works across extractions -- this was the first and most consistent finding of the whole calibration effort. Final sweep, with the current full configuration (Deriche filter, `gradu=1.0`):
 
 **Constrained** (n=38 throughout):
