@@ -62,6 +62,14 @@ Everything above compares against *measured* masses, which -- as [docs/parameter
 
 Richness here was downsampled from the simulation's full membership (thousands of subhalos per cluster -- far beyond what any spectroscopic survey reaches) to ~200, to be roughly comparable to the other samples above. `F_β(r)=0.42` was calibrated fresh against this simulation's true masses (independently of Tempel/CIRS) and came out close to the CIRS value (0.44) -- a reassuring cross-check from a completely different kind of ground truth.
 
+Informed mode (R200 fixed at its true value) was also tested:
+
+<p align="center">
+  <img src="images/fig13_M200_tng300_informed.png" width="55%">
+</p>
+
+`F_β(r)` needed re-calibrating to ≈0.48 for this richness (both blind and informed mode agree on this value -- richness, not R200 uncertainty, is what's driving the shift from the full-richness calibration of 0.42). Once correctly calibrated, informed mode's scatter is about 15-20% tighter than blind mode's at the same richness -- the same pattern found against every real-data sample in this document, now confirmed against true rather than measured mass.
+
 **The most important result from this sample isn't in the scatter plot above -- it's this:**
 
 <p align="center">
