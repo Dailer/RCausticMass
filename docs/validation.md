@@ -68,7 +68,7 @@ Informed mode (R200 fixed at its true value) was also tested:
   <img src="images/fig13_M200_tng300_informed.png" width="55%">
 </p>
 
-Once `F_β(r)` is correctly calibrated for a given richness, informed mode's scatter is about 15-20% tighter than blind mode's at the same richness -- the same pattern found against every real-data sample in this document, now confirmed against true rather than measured mass.
+Once `F_β(r)` is correctly calibrated for a given richness, informed mode is again more precise than blind mode at the same richness (M200 sd=0.118 vs. 0.127 dex across the same 75-cluster, full-mass-range sample) -- a smaller gap than the ~15-20% typically seen against real-data samples elsewhere in this document, but the same direction, now confirmed against true rather than measured mass.
 
 **Richness, not mass, turns out to be what `F_β(r)` actually tracks.** A first pass at this test (holding richness fixed at ~200 for every cluster while mass varied) found almost no mass-dependence, seemingly contradicting the mass-dependent `F_β(r)` trend found against real Tempel/CIRS references elsewhere in this project. Testing the *full* mass range above -- where richness is allowed to vary naturally with mass, as it does in any real cluster sample -- resolved this: the correct zero-bias `F_β(r)` is ≈0.42 at the richest end (median ~2300 members), ≈0.47-0.48 at N~200, and ≈0.60-0.61 for poor, low-mass systems (N~60-100) -- a clean, monotonic relationship with richness. Since richness and mass are naturally correlated in any real cluster population, this is very likely the real explanation for why the original real-data comparison looked mass-dependent in the first place.
 
