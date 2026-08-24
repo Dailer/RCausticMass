@@ -1,10 +1,14 @@
-# Validation against Tempel et al. (2017)
+# Validation
 
-All comparisons use the Tempel et al. (2017) group catalogue, restricted to 0.02 < z < 0.1 (2139 groups), as the source of both candidate galaxies and the "real" R200/M200 values plotted on the x-axis. Two candidate-extraction conventions were tested, since (as found throughout development) the method's precision depends substantially on how the input sample is built -- not only on the caustic-fitting method itself.
+This project's calibration draws on four independent validation samples, each contributing something the others can't: two extractions from the Tempel et al. (2017) group catalogue (testing how extraction geometry affects precision), a third from CIRS (Rines & Diaferio 2006, a genuinely separate survey and candidate selection), and a fourth from the TNG300 cosmological simulation (the only one with exactly known, not measured, true mass and membership). This document walks through each in turn, then a summary comparison at the end.
+
+## Tempel et al. (2017): two extraction conventions
+
+All comparisons in this section use the Tempel et al. (2017) group catalogue, restricted to 0.02 < z < 0.1 (2139 groups), as the source of both candidate galaxies and the "real" R200/M200 values plotted on the x-axis. Two candidate-extraction conventions were tested, since (as found throughout development) the method's precision depends substantially on how the input sample is built -- not only on the caustic-fitting method itself.
 
 Each panel below uses a random sample of 250 clusters for which `run_caustic()` converged in that specific mode (blind or informed) -- not necessarily the same 250 clusters across panels, since convergence depends on the mode and extraction. Error bars: `M200_err` is native (D99/Serra et al. 2011 formula); `R200_err` is derived by propagation from `M200_err` via M200 ∝ R200³, since R200 has no native uncertainty outside bayesian mode.
 
-## Extraction conventions
+### Extraction conventions
 
 **Constrained**: candidates within 3×R200 (R200 from Tempel's own catalogue), with the velocity window (|vlos|) constrained to the maximum |vlos| among Tempel's own confirmed members for that cluster. This ties the extraction directly to real cluster membership.
 
@@ -12,7 +16,7 @@ Each panel below uses a random sample of 250 clusters for which `run_caustic()` 
 
 `F_β(r)` was independently calibrated for each extraction (0.72 for Constrained, 0.50 for Unconstrained) -- see the main repository README for why a single default does not transfer between extraction geometries.
 
-## Blind mode (no external prior)
+### Blind mode (no external prior)
 
 R200 and M200 are both estimated from the data alone, with no R200/velocity-dispersion prior supplied.
 
@@ -32,7 +36,7 @@ The unconstrained extraction shows a clear tendency to **overestimate R200 for i
 
 The R200 bias above propagates directly into M200 (mass is integrated up to the estimated R200), compounding the unconstrained extraction's lower precision.
 
-## Informed mode (R200 fixed)
+### Informed mode (R200 fixed)
 
 R200 is held fixed at Tempel's own catalogue value; only M200 (and concentration) are estimated from the data.
 
