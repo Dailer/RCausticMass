@@ -104,7 +104,13 @@ Tested against the Tempel et al. (2017) group catalogue (0.02 < z < 0.1, 2139 gr
 
 Both use the same method with an F_β(r) calibrated for their respective extraction geometry, and the difference is visible: **how candidates are extracted matters as much as the method itself.** The proportional extraction (left), with a velocity window tied to real cluster membership, recovers M200 with substantially less scatter than the fixed-radius, wide-window extraction (right) -- even though both use blind mode (no external R200 prior) and both had F_β(r) independently optimized for their own geometry.
 
-See [docs/validation.md](docs/validation.md) for the full comparison, including R200 recovery and informed-mode (R200 fixed) results for both extractions, a third independent sample (CIRS), and a cosmological-simulation check (TNG300) against true, not measured, mass -- which also isolates a fundamental precision limit (line-of-sight projection angle) that no parameter choice can fix.
+See [docs/validation.md](docs/validation.md) for the full comparison, including R200 recovery and informed-mode (R200 fixed) results for both extractions, a third independent sample (CIRS), and a cosmological-simulation check (TNG300) against true, not measured, mass -- which also isolates a fundamental precision limit (line-of-sight projection angle) that no parameter choice can fix:
+
+<p align="center">
+  <img src="docs/images/fig12_proyeccion_tng300.png" width="75%">
+</p>
+
+Each column above is the *same* physical cluster from the TNG300 simulation, mock-observed from three different viewing angles -- nothing else changes. The spread from angle alone (sd≈0.13 dex, averaged across 15 clusters spanning nearly three decades in mass) is comparable to the *entire* cluster-to-cluster scatter seen anywhere else in this document. A real fraction of any individual cluster's mass "error" may simply be which direction it happens to be observed from, not something `run_caustic()` -- or any caustic-technique implementation -- can correct for.
 
 **Known caveat**: in blind mode, the fixed-radius extraction shows a clear tendency to overestimate R200 specifically for low-R200 clusters (a factor of 2-3x for some clusters with true R200 ≈0.3-1 Mpc) -- see the R200 panel in [docs/validation.md](docs/validation.md). This is consistent with the wider extraction geometry diluting the phase-space signal more severely for intrinsically smaller systems.
 
