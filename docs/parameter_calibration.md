@@ -289,6 +289,48 @@ The 43-halo TNG300 sample above only covers logM200=14.48-15.16 -- the massive e
 
 **With that fixed, testing a sample of poor, low-mass halos (logM200≈12.5-13.0, N≈60-100 members -- much poorer than anything in the 43-halo sample) found the zero-bias `fbr` shifts to ≈0.60-0.61.** Combined with the two richness points already established (full richness, median N≈2300: `fbr≈0.42`; N≈200: `fbr≈0.47-0.48`), this gives a third, independent point on the same curve, and it's monotonic and consistent: lower richness needs a higher `fbr`, smoothly, from ≈0.42 at N≈2300 up to ≈0.61 at N≈60-100. Since these particular low-richness halos are *also* the low-mass ones (richness and mass are correlated by construction in any halo population), this is strong evidence that **the "mass-dependent" `fbr` trend seen against Tempel/CIRS references was very likely a richness effect wearing a mass-dependence costume** -- real, massive real-world clusters tend to have more spectroscopically-confirmed members than poor groups, so a mass trend and a richness trend are nearly impossible to tell apart in real data alone. This is the cleanest resolution available anywhere in this document to the ambiguity flagged in the `fbr` section and the earlier full-richness TNG300 result above (where mass terciles showed almost no trend, because richness had already been controlled for by construction -- downsampling every cluster to the same N).
 
+<p align="center">
+  <img src="images/fig15_fbr_masa_vs_riqueza.png" width="90%">
+</p>
+
+Side by side, the contrast is stark: holding richness fixed at N≈200 and varying only mass (left) gives three tercile points with no coherent trend (0.511, 0.430, 0.481 -- consistent with noise around a flat line); letting mass vary naturally alongside richness, as it does in any real population, and plotting against richness instead (right) gives a clean, monotonic relationship across two decades in N. This is the single clearest piece of evidence in this document that richness, not mass, is what `F_β(r)` actually responds to.
+
+### The functional form of `fbr(richness)`
+
+With the full 11,942-group catalogue available, the three-point relationship above was refined into a proper calibration curve: 7 richness bins, log-spaced from N≈35 to N≈9000, 12 clusters sampled per bin (7 for the top bin, where fewer halos exist), zero-bias `fbr` found the same way (an `fbr` sweep per bin, root found by linear interpolation in bias vs. `fbr`).
+
+<p align="center">
+  <img src="images/fig14_fbr_riqueza_tng300.png" width="65%">
+</p>
+
+| N (richness) | 57 | 108 | 229 | 438 | 1277 | 2189 | 4771 |
+|---|---|---|---|---|---|---|---|
+| zero-bias `fbr` | 0.610 | 0.577 | 0.544 | 0.482 | 0.378 | 0.441 | 0.402 |
+
+Two functional forms were fit and both describe the trend well:
+
+- **Linear in log10(N)**: `fbr = 0.81 - 0.118 · log10(N)`, R²=0.87. Simple, two parameters, easy to apply.
+- **Power law with asymptote**: `fbr = 0.29 + 0.97 · N^(-0.26)`, R²=0.90. Slightly better fit, and physically motivated (approaches a floor value at very high richness rather than continuing to decline without bound, which the linear-in-log form implies but shouldn't be extrapolated to do).
+
+**Both extrapolate correctly to the earlier, independently-derived full-richness calibration point**: at N=2300, both formulas predict `fbr≈0.413`, matching the original ≈0.42-0.43 found directly from the full-richness (median N≈2300) sample almost exactly, despite that point not being part of this 7-bin fit at all. This cross-check is a meaningful confirmation that the relationship is real and consistently reproducible, not an artifact of any one particular binning choice.
+
+**Caveats before using either formula on real data**: this was calibrated purely on TNG300 subhalos in a fixed-radius, wide-window extraction (this project's own mock-observation pipeline) -- the specific numbers (though probably not the qualitative *shape*) may shift for a different extraction convention, the way the base-case `fbr` itself does (see the `fbr` section above). Also, `N` here means true richness (simulated ground truth); on real data, the practical challenge remains what it always was in this document -- getting a richness estimate that isn't already circular with the caustic fit itself (see "Predicting `fbr` from an external richness proxy" immediately below for one resolution).
+
+### Predicting `fbr` from an external richness proxy: mass works, velocity dispersion works better
+
+A natural question raised by the richness-`fbr` relationship: real observations don't know true richness in advance (that's what member classification is partly *for*), so how would anyone actually apply a richness-dependent `fbr` without already having done the harder half of the analysis? An earlier attempt at a two-pass, self-referential fix (Section "An iterative self-correction was tried" above) showed this kind of bootstrapping adds noise. A cleaner alternative: use an **external** observable -- something a real observer might have independently of the spectroscopic sample being fit, like an X-ray or SZ mass, or (as tested here) a velocity dispersion from an existing catalogue -- as a stand-in for expected richness, since richness correlates with both in any real halo population.
+
+Tested with a calibration/validation split (39/39 clusters) on the 75-cluster full-mass-range TNG300 sample: three mass terciles, and separately three velocity-dispersion terciles, were calibrated for their own zero-bias `fbr` on the calibration half, then applied blind to the validation half and compared against a fixed `fbr=0.50` and against the (unrealistic, oracle) case of using each cluster's own true richness:
+
+| Method | M200 bias (dex) | M200 sd (dex) |
+|---|---|---|
+| Fixed `fbr=0.50` | +0.015 | 0.162 |
+| `fbr` from true mass tercile | -0.054 | 0.144 |
+| **`fbr` from true velocity-dispersion tercile** | **-0.011** | **0.144** |
+| `fbr` from true richness (oracle, not achievable in practice) | -0.023 | 0.127 |
+
+Both external proxies recover roughly half of the oracle's scatter improvement over the fixed-`fbr` baseline (sd 0.162→0.144, vs. the oracle's 0.162→0.127). But velocity dispersion gives a noticeably smaller bias than mass (-0.011 vs. -0.054) for the same scatter gain -- consistent with `fbr`/F_β(r) being a velocity-anisotropy correction in the first place, so a dynamical quantity is a more directly relevant proxy than a derived mass. **Caveat**: this needs a genuinely external velocity dispersion (from an independent catalogue, not the internal preliminary estimate computed from the same candidate sample being fit -- that specific shortcut was tried earlier in this document and found not to work, precisely because it isn't independent of the same fixed-window bias affecting the candidates themselves). This is a promising direction, not a finished recommendation: the calibration/validation split used here (≈13 clusters per tercile) is small enough that the specific numbers should be treated as suggestive rather than final.
+
 ---
 
 ## External validation: literature clusters with independently published R200/M200
